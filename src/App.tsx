@@ -1,33 +1,16 @@
 import React, { useState } from 'react';
 import { useAuth } from './hooks/useAuth';
-import { useTheme } from './hooks/useTheme';
 import { AuthForm } from './components/auth/AuthForm';
 import { Header } from './components/layout/Header';
 import { Dashboard } from './components/dashboard/Dashboard';
-import { StudentList } from './components/students/StudentList';
-import { ClassList } from './components/classes/ClassList';
-import { PackageList } from './components/packages/PackageList';
-import { SessionList } from './components/sessions/SessionList';
-import { ReportsList } from './components/reports/ReportsList';
-import { PaymentsList } from './components/payments/PaymentsList';
-import { Settings } from './components/settings/Settings';
-import { PublicRegistrationForm } from './components/students/PublicRegistrationForm';
 
 function App() {
   const { user, loading } = useAuth();
-  const { theme } = useTheme();
   const [currentPage, setCurrentPage] = useState('dashboard');
-
-  // Check if this is the public registration form route
-  const isPublicRegistration = window.location.pathname === '/cadastro-formando';
-
-  if (isPublicRegistration) {
-    return <PublicRegistrationForm />;
-  }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
     );
@@ -42,26 +25,22 @@ function App() {
       case 'dashboard':
         return <Dashboard />;
       case 'students':
-        return <StudentList />;
+        return <div className="p-8 text-center">Módulo de Formandos em desenvolvimento</div>;
       case 'classes':
-        return <ClassList />;
+        return <div className="p-8 text-center">Módulo de Turmas em desenvolvimento</div>;
       case 'packages':
-        return <PackageList />;
+        return <div className="p-8 text-center">Módulo de Pacotes em desenvolvimento</div>;
       case 'sessions':
-        return <SessionList />;
-      case 'payments':
-        return <PaymentsList />;
-      case 'reports':
-        return <ReportsList />;
+        return <div className="p-8 text-center">Módulo de Sessões em desenvolvimento</div>;
       case 'settings':
-        return <Settings />;
+        return <div className="p-8 text-center">Configurações em desenvolvimento</div>;
       default:
         return <Dashboard />;
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-50">
       <Header currentPage={currentPage} onPageChange={setCurrentPage} />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {renderCurrentPage()}
