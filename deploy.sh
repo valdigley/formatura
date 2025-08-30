@@ -24,6 +24,16 @@ if ! command -v docker-compose &> /dev/null; then
     echo "✅ Docker Compose instalado."
 fi
 
+# Criar diretório do projeto se não existir
+PROJECT_DIR="/opt/foto-formatura"
+if [ ! -d "$PROJECT_DIR" ]; then
+    echo "📁 Criando diretório do projeto..."
+    sudo mkdir -p $PROJECT_DIR
+    sudo chown $USER:$USER $PROJECT_DIR
+fi
+
+cd $PROJECT_DIR
+
 # Verificar se arquivo .env existe
 if [ ! -f ".env" ]; then
     echo "⚠️  Arquivo .env não encontrado. Criando template..."
@@ -37,14 +47,11 @@ DOMAIN=seu-dominio.com
 EMAIL=seu-email@exemplo.com
 EOF
     echo "📝 Arquivo .env criado. EDITE-O com suas configurações antes de continuar!"
-    echo "   Arquivo localizado em: $(pwd)/.env"
+    echo "   Arquivo localizado em: $PROJECT_DIR/.env"
     exit 1
 fi
 
-echo "📦 Instalando dependências..."
-npm install
-
-echo "🏗️  Fazendo build da aplicação..."
+echo "📦 Fazendo build da aplicação..."
 npm run build
 
 echo "🐳 Iniciando containers Docker..."
@@ -56,7 +63,7 @@ docker-compose ps
 echo "✅ Deploy concluído!"
 echo ""
 echo "📋 PRÓXIMOS PASSOS:"
-echo "1. Verifique se a aplicação está rodando: http://$(curl -s ifconfig.me)"
+echo "1. Verifique se a aplicação está rodando: http://seu-ip"
 echo "2. Configure SSL com Let's Encrypt (opcional):"
 echo "   sudo apt install certbot python3-certbot-nginx"
 echo "   sudo certbot --nginx -d seu-dominio.com"
