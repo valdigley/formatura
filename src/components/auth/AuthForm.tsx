@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useTheme } from '../../hooks/useTheme';
-import { LogIn, UserPlus, Loader2 } from 'lucide-react';
+import { LogIn, UserPlus, Loader2, Chrome } from 'lucide-react';
 
 export const AuthForm: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, signInWithGoogle } = useAuth();
   const { theme } = useTheme();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -46,6 +47,26 @@ export const AuthForm: React.FC = () => {
       setError('An unexpected error occurred');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true);
+    setError('');
+
+    try {
+      const { error } = await signInWithGoogle();
+      
+      if (error) {
+        console.error('Google auth error:', error);
+        setError('Erro ao fazer login com Google. Tente novamente.');
+      }
+      // Note: For OAuth, the user will be redirected, so we don't need to handle success here
+    } catch (err) {
+      console.error('Google auth exception:', err);
+      setError('Erro inesperado ao fazer login com Google');
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -114,6 +135,33 @@ export const AuthForm: React.FC = () => {
               <>
                 {isLogin ? <LogIn className="h-4 w-4 mr-2" /> : <UserPlus className="h-4 w-4 mr-2" />}
                 {isLogin ? 'Entrar' : 'Criar Conta'}
+              </>
+            )}
+          </button>
+
+          {/* Divider */}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-300 dark:border-gray-600" />
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-blue-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400">ou</span>
+            </div>
+          </div>
+
+          {/* Google Sign In Button */}
+          <button
+            type="button"
+            onClick={handleGoogleSignIn}
+            disabled={googleLoading || loading}
+            className="group relative w-full flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {googleLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <>
+                <Chrome className="h-4 w-4 mr-2 text-red-500" />
+                Continuar com Google
               </>
             )}
           </button>
