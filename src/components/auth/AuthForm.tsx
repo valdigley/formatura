@@ -23,9 +23,26 @@ export const AuthForm: React.FC = () => {
         : await signUp(email, password);
 
       if (error) {
-        setError(error.message);
+        console.error('Auth error:', error);
+        if (error.message.includes('Invalid login credentials')) {
+          setError('Email ou senha incorretos. Verifique suas credenciais.');
+        } else if (error.message.includes('Email not confirmed')) {
+          setError('Email não confirmado. Verifique sua caixa de entrada.');
+        } else if (error.message.includes('User already registered')) {
+          setError('Este email já está cadastrado. Tente fazer login.');
+        } else {
+          setError(error.message);
+        }
+      } else {
+        if (!isLogin) {
+          setError('');
+          alert('Conta criada com sucesso! Você já pode fazer login.');
+          setIsLogin(true);
+          setPassword('');
+        }
       }
     } catch (err) {
+      console.error('Auth exception:', err);
       setError('An unexpected error occurred');
     } finally {
       setLoading(false);
