@@ -1,7 +1,131 @@
 import React, { useState, useEffect } from 'react';
-import { Users, BookOpen, Calendar, DollarSign } from 'lucide-react';
+import { Users, BookOpen, Calendar, DollarSign, Camera, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from 'recharts';
 
 export const Dashboard: React.FC = () => {
+  const [stats, setStats] = useState({
+    totalStudents: 0,
+    totalClasses: 0,
+    upcomingSessions: 0,
+    totalRevenue: 0,
+    pendingPayments: 0,
+    completedSessions: 0,
+    activePackages: 0
+  });
+
+  const [monthlyData, setMonthlyData] = useState([]);
+  const [paymentData, setPaymentData] = useState([]);
+  const [recentActivity, setRecentActivity] = useState([]);
+
+  useEffect(() => {
+    // Load data from localStorage
+    const students = JSON.parse(localStorage.getItem('students') || '[]');
+    const classes = JSON.parse(localStorage.getItem('classes') || '[]');
+    const sessions = JSON.parse(localStorage.getItem('sessions') || '[]');
+
+    // Calculate stats
+    const now = new Date();
+    const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    const upcomingSessions = sessions.filter(session => {
+      const sessionDate = new Date(session.date);
+      return sessionDate >= now && sessionDate <= nextWeek;
+    }).length;
+
+    const completedSessions = sessions.filter(session => session.status === 'completed').length;
+    const totalRevenue = sessions.reduce((sum, session) => sum + (session.price || 0), 0);
+    const pendingPayments = sessions.filter(session => session.paymentStatus === 'pending').length;
+
+    setStats({
+      totalStudents: students.length,
+      totalClasses: classes.length,
+      upcomingSessions,
+      totalRevenue,
+      pendingPayments,
+      completedSessions,
+      activePackages: classes.filter(c => c.status === 'active').length
+    });
+
+    // Generate monthly data
+    const monthlyStats = {};
+    sessions.forEach(session => {
+      const month = new Date(session.date).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
+      monthlyStats[month] = (monthlyStats[month] || 0) + 1;
+    });
+
+    const monthlyArray = Object.entries(monthlyStats).map(([name, sessions]) => ({
+      name,
+      sessions
+    }));
+
+    setMonthlyData(monthlyArray);
+
+    // Generate payment data
+    const paidAmount = sessions.filter(s => s.paymentStatus === 'paid').reduce((sum, s) => sum + (s.price || 0), 0);
+    const pendingAmount = sessions.filter(s => s.paymentStatus === 'pending').reduce((sum, s) => sum + (s.price || 0), 0);
+
+    if (paidAmount > 0 || pendingAmount > 0) {
+      setPaymentData([
+        { name: 'Pago', value: paidAmount, color: '#10B981' },
+        { name: 'Pendente', value: pendingAmount, color: '#F59E0B' }
+      ]);
+    }
+
+    // Generate recent activity
+    const activities = [];
+    
+    sessions.slice(-5).forEach(session => {
+      activities.push({
+        type: 'session',
+        description: `Sessão agendada para ${session.studentName}`,
+        date: session.createdAt || session.date,
+        status: session.status
+      });
+    });
+
+    students.slice(-3).forEach(student => {
+      activities.push({
+        type: 'student',
+        description: `Novo formando cadastrado: ${student.name}`,
+        date: student.createdAt || new Date().toISOString()
+      });
+    });
+
+    activities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    setRecentActivity(activities.slice(0, 10));
+  }, []);
+
+  const statsData = [
+    {
+      title: 'Total de Formandos',
+      value: stats.totalStudents.toString(),
+      change: '+12%',
+      color: 'blue',
+      icon: Users
+    },
+    {
+      title: 'Turmas de Formatura',
+      value: stats.totalClasses.toString(),
+      change: '+8%',
+      color: 'emerald',
+      icon: BookOpen
+    },
+    {
+      title: 'Sessões Próximas',
+      value: stats.upcomingSessions.toString(),
+      change: '+15%',
+      color: 'purple',
+      icon: Calendar
+    },
+    {
+      title: 'Receita Total',
+      value: `R$ ${stats.totalRevenue.toLocaleString('pt-BR')}`,
+      change: '+23%',
+      color: 'orange',
+      icon: DollarSign
+    }
+  ];
+
   return (
     <div className="space-y-8">
       <div>
@@ -9,6 +133,15 @@ export const Dashboard: React.FC = () => {
         <p className="text-gray-600 mt-1">Visão geral das sessões fotográficas</p>
       </div>
 
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {statsData.map((stat, index) => {
+          const Icon = stat.icon;
+          return (
+            <div key={index} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">{stat.title}</p>
                   <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{stat.value}</p>
                   <p className={`text-sm mt-1 ${
                     stat.change.startsWith('+') ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'
