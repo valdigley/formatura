@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAuth } from '../../hooks/useAuth';
-import { LogOut, Users, Calendar, FileText, Settings, Moon, Sun, Camera, Package } from 'lucide-react';
+import { LogOut, Users, Calendar, FileText, Settings, Moon, Sun, DollarSign } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
 
 interface HeaderProps {
@@ -16,8 +16,10 @@ export const Header: React.FC<HeaderProps> = ({ currentPage, onPageChange }) => 
     { id: 'dashboard', label: 'Dashboard', icon: Users },
     { id: 'students', label: 'Formandos', icon: Users },
     { id: 'classes', label: 'Turmas de Formatura', icon: Calendar },
-    { id: 'packages', label: 'Pacotes', icon: Package },
-    { id: 'sessions', label: 'Sessões', icon: Camera },
+    { id: 'packages', label: 'Pacotes', icon: FileText },
+    { id: 'sessions', label: 'Sessões Fotográficas', icon: Calendar },
+    { id: 'payments', label: 'Pagamentos', icon: DollarSign },
+    { id: 'reports', label: 'Relatórios', icon: FileText },
   ];
 
   return (

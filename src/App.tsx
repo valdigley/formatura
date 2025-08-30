@@ -8,6 +8,8 @@ import { StudentList } from './components/students/StudentList';
 import { ClassList } from './components/classes/ClassList';
 import { PackageList } from './components/packages/PackageList';
 import { SessionList } from './components/sessions/SessionList';
+import { ReportsList } from './components/reports/ReportsList';
+import { PaymentsList } from './components/payments/PaymentsList';
 import { Settings } from './components/settings/Settings';
 import { PublicRegistrationForm } from './components/students/PublicRegistrationForm';
 
@@ -47,6 +49,10 @@ function App() {
         return <PackageList />;
       case 'sessions':
         return <SessionList />;
+      case 'payments':
+        return <PaymentsList />;
+      case 'reports':
+        return <ReportsList />;
       case 'settings':
         return <Settings />;
       default:
