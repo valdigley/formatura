@@ -54,7 +54,7 @@ fi
 echo "📦 Instalando dependências..."
 npm install
 
-echo "📦 Fazendo build da aplicação..."
+echo "📦 Instalando dependências..."
 npm run build
 
 echo "🐳 Iniciando containers Docker..."
