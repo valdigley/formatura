@@ -15,7 +15,6 @@ import { PublicRegistrationForm } from './components/students/PublicRegistration
 
 function App() {
   const { user, loading } = useAuth();
-  const { theme } = useTheme();
   const [currentPage, setCurrentPage] = useState('dashboard');
 
   // Check if this is the public registration form route

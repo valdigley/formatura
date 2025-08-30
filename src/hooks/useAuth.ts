@@ -8,6 +8,8 @@ export const useAuth = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
+
     // Get initial session
     const getInitialSession = async () => {
       try {
@@ -15,17 +17,17 @@ export const useAuth = () => {
         if (error) {
           console.error('Error getting session:', error);
         }
-        setSession(session);
-        setUser(session?.user ?? null);
         
-        // If user exists, create/update user profile
-        if (session?.user) {
-          await createOrUpdateUserProfile(session.user);
+        if (mounted) {
+          setSession(session);
+          setUser(session?.user ?? null);
         }
       } catch (error) {
         console.error('Error in getInitialSession:', error);
       } finally {
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
     };
 
@@ -35,27 +37,33 @@ export const useAuth = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('Auth state changed:', event, session?.user?.email);
-        setSession(session);
-        setUser(session?.user ?? null);
         
-        // Create/update user profile on sign in
-        if (event === 'SIGNED_IN' && session?.user) {
-          await createOrUpdateUserProfile(session.user);
+        if (mounted) {
+          setSession(session);
+          setUser(session?.user ?? null);
+          setLoading(false);
         }
-        
-        setLoading(false);
+
+        // Create user profile only on sign in, not on every auth state change
+        if (event === 'SIGNED_IN' && session?.user && mounted) {
+          createUserProfileAsync(session.user);
+        }
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
-  const createOrUpdateUserProfile = async (user: User) => {
+  // Async function to create user profile without blocking UI
+  const createUserProfileAsync = async (user: User) => {
     try {
       // Check if user profile exists
       const { data: existingUser, error: fetchError } = await supabase
         .from('users')
-        .select('*')
+        .select('id')
         .eq('id', user.id)
         .single();
 
@@ -81,21 +89,19 @@ export const useAuth = () => {
           console.log('User profile created successfully');
           
           // Create photographer profile
-          await createPhotographerProfile(user.id, user.email || '');
+          await createPhotographerProfileAsync(user.id, user.email || '');
         }
-      } else {
-        console.log('User profile already exists');
       }
     } catch (error) {
-      console.error('Error in createOrUpdateUserProfile:', error);
+      console.error('Error in createUserProfileAsync:', error);
     }
   };
 
-  const createPhotographerProfile = async (userId: string, email: string) => {
+  const createPhotographerProfileAsync = async (userId: string, email: string) => {
     try {
       const { data: existingPhotographer } = await supabase
         .from('photographers')
-        .select('*')
+        .select('id')
         .eq('user_id', userId)
         .single();
 
@@ -116,7 +122,7 @@ export const useAuth = () => {
         }
       }
     } catch (error) {
-      console.error('Error in createPhotographerProfile:', error);
+      console.error('Error in createPhotographerProfileAsync:', error);
     }
   };
 
