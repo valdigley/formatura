@@ -51,6 +51,9 @@ EOF
     exit 1
 fi
 
+echo "📦 Instalando dependências..."
+npm install
+
 echo "📦 Fazendo build da aplicação..."
 npm run build
 
