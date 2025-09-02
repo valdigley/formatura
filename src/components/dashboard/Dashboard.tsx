@@ -194,6 +194,9 @@ export const Dashboard: React.FC = () => {
           description: `Novo formando: ${s.full_name}`,
           date: s.created_at,
           status: s.status,
+          contractStatus: s.notes?.includes('=== ENVIO DE CONTRATO ===') 
+            ? (s.notes.includes('ENVIADO COM SUCESSO') ? 'sent_success' : 'sent_failed')
+            : 'unknown'
         }));
 
       const recentClasses = classes

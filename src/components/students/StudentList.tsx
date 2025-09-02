@@ -539,6 +539,39 @@ Obrigado pela confiança! 📷✨`;
                   Turma: {graduationClasses.find(c => c.id === student.graduation_class_id)?.name || 'N/A'}
                 </div>
               )}
+              
+              {/* Contract and Payment Status */}
+              {student.notes && student.notes.includes('=== ENVIO DE CONTRATO ===') && (
+                <div className="flex items-center space-x-2 text-xs">
+                  {student.notes.includes('ENVIADO COM SUCESSO') ? (
+                    <>
+                      <CheckCircle className="h-3 w-3 text-green-500" />
+                      <span className="text-green-600 dark:text-green-400">Contrato enviado</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="h-3 w-3 text-red-500" />
+                      <span className="text-red-600 dark:text-red-400">Falha no envio do contrato</span>
+                    </>
+                  )}
+                </div>
+              )}
+              
+              {student.notes && student.notes.includes('=== ENVIO DE PAGAMENTO ===') && (
+                <div className="flex items-center space-x-2 text-xs">
+                  {student.notes.includes('ENVIADO COM SUCESSO') && student.notes.includes('=== ENVIO DE PAGAMENTO ===') ? (
+                    <>
+                      <CheckCircle className="h-3 w-3 text-green-500" />
+                      <span className="text-green-600 dark:text-green-400">Pagamento enviado</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="h-3 w-3 text-red-500" />
+                      <span className="text-red-600 dark:text-red-400">Falha no envio do pagamento</span>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             {student.notes && (

@@ -250,54 +250,314 @@ _________________________    _________________________
 
       if (settingsError || !settings?.settings?.whatsapp?.is_connected) {
         console.log('WhatsApp não configurado ou não conectado');
-        return false;
+        return { success: false, error: 'WhatsApp não configurado ou não conectado', phone: studentData.phone };
       }
 
       const whatsappConfig = settings.settings.whatsapp;
-    
-    // Função para normalizar e tentar diferentes formatos de telefone
-    const normalizePhone = (phone: string) => {
-      let clean = phone.replace(/\D/g, '');
       
-      // Remove código do país se presente
-      if (clean.startsWith('55')) {
-        clean = clean.substring(2);
-      }
-      
-      // Retorna diferentes variações do número
-      const variations = [];
-      
-      if (clean.length === 10) {
-        // Número sem 9º dígito - adiciona o 9
-        const with9 = clean.substring(0, 2) + '9' + clean.substring(2);
-        variations.push(`55${with9}`);
-        variations.push(`55${clean}`);
-      } else if (clean.length === 11) {
-        // Número com 9º dígito
-        variations.push(`55${clean}`);
-        // Também tenta sem o 9º dígito
-        if (clean.charAt(2) === '9') {
-          const without9 = clean.substring(0, 2) + clean.substring(3);
-          variations.push(`55${without9}`);
+      // Função para normalizar e tentar diferentes formatos de telefone
+      const normalizePhone = (phone: string) => {
+        let clean = phone.replace(/\D/g, '');
+        
+        // Remove código do país se presente
+        if (clean.startsWith('55')) {
+          clean = clean.substring(2);
         }
-      } else {
-        // Outros casos
-        variations.push(`55${clean}`);
-      }
+        
+        // Retorna diferentes variações do número
+        const variations = [];
+        
+        if (clean.length === 10) {
+          // Número sem 9º dígito - adiciona o 9
+          const with9 = clean.substring(0, 2) + '9' + clean.substring(2);
+          variations.push(`55${with9}`);
+          variations.push(`55${clean}`);
+          // Também tenta sem código do país
+          variations.push(with9);
+          variations.push(clean);
+        } else if (clean.length === 11) {
+          // Número com 9º dígito
+          variations.push(`55${clean}`);
+          variations.push(clean);
+          // Também tenta sem o 9º dígito
+          if (clean.charAt(2) === '9') {
+            const without9 = clean.substring(0, 2) + clean.substring(3);
+            variations.push(`55${without9}`);
+            variations.push(without9);
+          }
+        } else if (clean.length === 13 && clean.startsWith('55')) {
+          // Número já com código do país
+          variations.push(clean);
+          const withoutCountry = clean.substring(2);
+          variations.push(withoutCountry);
+          // Tenta variações com/sem 9º dígito
+          if (withoutCountry.length === 11 && withoutCountry.charAt(2) === '9') {
+            const without9 = withoutCountry.substring(0, 2) + withoutCountry.substring(3);
+            variations.push(`55${without9}`);
+            variations.push(without9);
+          }
+        } else {
+          // Outros casos - tenta como está e com código do país
+          variations.push(clean);
+          variations.push(`55${clean}`);
+        }
+        
+        // Remove duplicatas e retorna
+        return [...new Set(variations)];
+      };
       
-      return variations;
-    };
-    
-    const phoneVariations = normalizePhone(studentData.phone);
-    console.log('Tentando enviar para números:', phoneVariations);
+      const phoneVariations = normalizePhone(studentData.phone);
+      console.log('Tentando enviar contrato para números:', phoneVariations);
 
       const message = `Olá ${studentData.full_name}! 📸
 
-Seu cadastro foi realizado com sucesso! 
+🎉 *CADASTRO REALIZADO COM SUCESSO!* 🎉
 
-Segue abaixo o contrato para sua sessão fotográfica de formatura. Por favor, leia com atenção e confirme seu aceite respondendo "ACEITO" nesta conversa.
+Segue abaixo o contrato para sua sessão fotográfica de formatura. 
 
-📋 CONTRATO:
+📋 *IMPORTANTE:* Leia com atenção e confirme seu aceite respondendo *"ACEITO"* nesta conversa.
+
+📄 *CONTRATO DE PRESTAÇÃO DE SERVIÇOS FOTOGRÁFICOS:*
+
+${contract}
+
+---
+
+✅ *PARA CONFIRMAR:* Responda *"ACEITO"* 
+
+📞 *DÚVIDAS?* Entre em contato conosco!
+
+Atenciosamente,
+Equipe Fotográfica 📷✨`;
+
+      // Tenta enviar para cada variação do número até conseguir
+      for (const phoneNumber of phoneVariations) {
+        try {
+          console.log(`Tentando enviar contrato para: ${phoneNumber}`);
+          
+          const response = await fetch(`${whatsappConfig.api_url}/message/sendText/${whatsappConfig.instance_name}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': whatsappConfig.api_key,
+            },
+            body: JSON.stringify({
+              number: `${phoneNumber}@s.whatsapp.net`,
+              text: message,
+            }),
+          });
+
+          const responseData = await response.json();
+          console.log(`Resposta para ${phoneNumber}:`, responseData);
+
+          if (response.ok && responseData.key) {
+            console.log(`✅ Contrato enviado com sucesso para: ${phoneNumber}`);
+            return { 
+              success: true, 
+              phone: phoneNumber, 
+              messageId: responseData.key.id,
+              remoteJid: responseData.key.remoteJid 
+            };
+          } else {
+            console.log(`❌ Falha ao enviar contrato para ${phoneNumber}:`, responseData.message || 'Erro desconhecido');
+          }
+        } catch (error) {
+          console.error(`Erro ao tentar enviar contrato para ${phoneNumber}:`, error);
+        }
+      }
+      
+      console.log('❌ Falha ao enviar contrato para todas as variações do número');
+      return { 
+        success: false, 
+        phone: phoneVariations[0], 
+        error: 'Não foi possível enviar para nenhuma variação do número',
+        attemptedNumbers: phoneVariations
+      };
+    } catch (error) {
+      console.error('Error sending contract via WhatsApp:', error);
+      return { 
+        success: false, 
+        error: error.message || 'Erro interno ao enviar contrato',
+        phone: studentData.phone 
+      };
+    }
+  };
+
+  const sendPaymentRequest = async (studentData: any, packageData: any, paymentData: any, graduationClass?: any) => {
+    try {
+      // Get MercadoPago config
+      const { data: settings } = await supabase
+        .from('user_settings')
+        .select('settings')
+        .eq('user_id', photographerUserId)
+        .single();
+
+      const mercadoPagoConfig = settings?.settings?.mercadopago;
+      if (!mercadoPagoConfig?.is_configured) {
+        console.log('Mercado Pago não configurado');
+        return { success: false, error: 'Mercado Pago não configurado' };
+      }
+
+      // Create payment preference
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mercadopago?action=create-preference`;
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          access_token: mercadoPagoConfig.access_token,
+          environment: mercadoPagoConfig.environment,
+          title: packageData?.name || 'Pacote Fotográfico de Formatura',
+          amount: paymentData.final_price || packageData?.price || 500,
+          payer: {
+            name: studentData.full_name,
+            email: studentData.email,
+            phone: {
+              area_code: studentData.phone.substring(0, 2),
+              number: studentData.phone.substring(2)
+            },
+            cpf: studentData.cpf || '12345678909'
+          },
+          external_reference: `student-${Date.now()}-registration`,
+          notification_url: `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mercadopago-webhook`
+        }),
+      });
+
+      const responseData = await response.json();
+
+      if (!response.ok || !responseData.success) {
+        throw new Error(responseData.error || 'Erro ao criar link de pagamento');
+      }
+
+      const paymentLink = responseData.payment_link;
+      
+      // Get WhatsApp config
+      const whatsappConfig = settings.settings.whatsapp;
+      if (!whatsappConfig?.is_connected) {
+        console.log('WhatsApp não conectado para envio de pagamento');
+        return { success: false, error: 'WhatsApp não conectado' };
+      }
+      
+      // Normalizar telefone para pagamento
+      const normalizePhone = (phone: string) => {
+        let clean = phone.replace(/\D/g, '');
+        
+        if (clean.startsWith('55')) {
+          clean = clean.substring(2);
+        }
+        
+        const variations = [];
+        
+        if (clean.length === 10) {
+          const with9 = clean.substring(0, 2) + '9' + clean.substring(2);
+          variations.push(`55${with9}`);
+          variations.push(`55${clean}`);
+          variations.push(with9);
+          variations.push(clean);
+        } else if (clean.length === 11) {
+          variations.push(`55${clean}`);
+          variations.push(clean);
+          if (clean.charAt(2) === '9') {
+            const without9 = clean.substring(0, 2) + clean.substring(3);
+            variations.push(`55${without9}`);
+            variations.push(without9);
+          }
+        } else {
+          variations.push(clean);
+          variations.push(`55${clean}`);
+        }
+        
+        return [...new Set(variations)];
+      };
+      
+      const phoneVariations = normalizePhone(studentData.phone);
+      console.log('Tentando enviar pagamento para números:', phoneVariations);
+
+      const paymentMessage = `💰 *SOLICITAÇÃO DE PAGAMENTO* 💰
+
+Olá ${studentData.full_name}! 
+
+Agora que você já recebeu e pode revisar o contrato, segue o link para efetuar o pagamento:
+
+📋 *DETALHES DO PAGAMENTO:*
+• Pacote: ${packageData?.name || 'Pacote Fotográfico'}
+• Valor: R$ ${(paymentData.final_price || packageData?.price || 0).toLocaleString('pt-BR')}
+• Forma de Pagamento: ${paymentData.payment_method}
+${paymentData.installments > 1 ? `• Parcelas: ${paymentData.installments}x de R$ ${((paymentData.final_price || 0) / paymentData.installments).toLocaleString('pt-BR')}` : ''}
+${paymentData.discount > 0 ? `• Desconto Aplicado: ${paymentData.discount}%` : ''}
+${graduationClass ? `• Turma: ${graduationClass.name}` : ''}
+${graduationClass?.session_date ? `• Data da Sessão: ${new Date(graduationClass.session_date).toLocaleDateString('pt-BR')}` : ''}
+
+💳 *LINK PARA PAGAMENTO:*
+${paymentLink}
+
+✅ *FORMAS DE PAGAMENTO DISPONÍVEIS:*
+• PIX (aprovação imediata)
+• Cartão de crédito (até 12x)
+• Cartão de débito
+• Boleto bancário
+
+⏰ *IMPORTANTE:*
+• Link válido por 24 horas
+• Após o pagamento, você receberá confirmação automática
+• Sua sessão será confirmada após a aprovação do pagamento
+
+📞 Em caso de dúvidas, entre em contato!
+
+Obrigado! 📷✨`;
+
+      // Tenta enviar para cada variação do número até conseguir
+      for (const phoneNumber of phoneVariations) {
+        try {
+          console.log(`Tentando enviar pagamento para: ${phoneNumber}`);
+          
+          const response = await fetch(`${whatsappConfig.api_url}/message/sendText/${whatsappConfig.instance_name}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': whatsappConfig.api_key,
+            },
+            body: JSON.stringify({
+              number: `${phoneNumber}@s.whatsapp.net`,
+              text: paymentMessage,
+            }),
+          });
+
+          const responseData = await response.json();
+          console.log(`Resposta pagamento para ${phoneNumber}:`, responseData);
+
+          if (response.ok && responseData.key) {
+            console.log(`✅ Pagamento enviado com sucesso para: ${phoneNumber}`);
+            return { 
+              success: true, 
+              phone: phoneNumber, 
+              messageId: responseData.key.id,
+              remoteJid: responseData.key.remoteJid 
+            };
+          } else {
+            console.log(`❌ Falha ao enviar pagamento para ${phoneNumber}:`, responseData.message || 'Erro desconhecido');
+          }
+        } catch (error) {
+          console.error(`Erro ao tentar enviar pagamento para ${phoneNumber}:`, error);
+        }
+      }
+      
+      return { 
+        success: false, 
+        error: 'Não foi possível enviar para nenhuma variação do número',
+        attemptedNumbers: phoneVariations
+      };
+    } catch (error) {
+      console.error('Error sending payment request:', error);
+      return { 
+        success: false, 
+        error: error.message || 'Erro interno ao enviar pagamento'
+      };
+    }
+  };
 
 ${contract}
 
@@ -527,15 +787,20 @@ Obrigado! 📷✨`;
           );
           
           // Registrar o resultado do envio do contrato
+          const contractStatus = contractResult.success ? 'sent_success' : 'sent_failed';
+          const contractDetails = contractResult.success 
+            ? `ENVIADO COM SUCESSO\nTelefone: ${contractResult.phone}\nRemote JID: ${contractResult.remoteJid || 'N/A'}\nID da mensagem: ${contractResult.messageId || 'N/A'}`
+            : `FALHA NO ENVIO\nErro: ${contractResult.error}\nTelefones tentados: ${contractResult.attemptedNumbers?.join(', ') || contractResult.phone}`;
+            
           await supabase
             .from('students')
             .update({
-              notes: (newStudent.notes || '') + `\n\n=== ENVIO DE CONTRATO ===\nData: ${new Date().toLocaleString('pt-BR')}\nStatus: ${contractResult.success ? 'ENVIADO COM SUCESSO' : 'FALHA NO ENVIO'}\nTelefone usado: ${contractResult.phone}\n${contractResult.error ? `Erro: ${contractResult.error}` : `ID da mensagem: ${contractResult.messageId}`}`,
+              notes: (newStudent.notes || '') + `\n\n=== ENVIO DE CONTRATO ===\nData: ${new Date().toLocaleString('pt-BR')}\nStatus: ${contractDetails}`,
               updated_at: new Date().toISOString()
             })
             .eq('id', newStudent.id);
           
-          // Always send payment request after contract
+          // Send payment request after contract
           const paymentResult = await sendPaymentRequest(
             { ...formData, phone: cleanPhone },
             packageData,
@@ -544,10 +809,14 @@ Obrigado! 📷✨`;
           );
           
           // Registrar o resultado do envio do pagamento
+          const paymentDetails = paymentResult.success 
+            ? `ENVIADO COM SUCESSO\nTelefone: ${paymentResult.phone}\nRemote JID: ${paymentResult.remoteJid || 'N/A'}\nID da mensagem: ${paymentResult.messageId || 'N/A'}`
+            : `FALHA NO ENVIO\nErro: ${paymentResult.error}\nTelefones tentados: ${paymentResult.attemptedNumbers?.join(', ') || 'N/A'}`;
+            
           await supabase
             .from('students')
             .update({
-              notes: (newStudent.notes || '') + `\n\n=== ENVIO DE PAGAMENTO ===\nData: ${new Date().toLocaleString('pt-BR')}\nStatus: ${paymentResult ? 'ENVIADO COM SUCESSO' : 'FALHA NO ENVIO'}`,
+              notes: (newStudent.notes || '') + `\n\n=== ENVIO DE PAGAMENTO ===\nData: ${new Date().toLocaleString('pt-BR')}\nStatus: ${paymentDetails}`,
               updated_at: new Date().toISOString()
             })
             .eq('id', newStudent.id);
