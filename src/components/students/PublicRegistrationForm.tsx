@@ -254,8 +254,42 @@ _________________________    _________________________
       }
 
       const whatsappConfig = settings.settings.whatsapp;
-      const cleanPhone = studentData.phone.replace(/\D/g, '');
-      const formattedPhone = cleanPhone.length === 11 ? `55${cleanPhone}` : cleanPhone;
+    
+    // Função para normalizar e tentar diferentes formatos de telefone
+    const normalizePhone = (phone: string) => {
+      let clean = phone.replace(/\D/g, '');
+      
+      // Remove código do país se presente
+      if (clean.startsWith('55')) {
+        clean = clean.substring(2);
+      }
+      
+      // Retorna diferentes variações do número
+      const variations = [];
+      
+      if (clean.length === 10) {
+        // Número sem 9º dígito - adiciona o 9
+        const with9 = clean.substring(0, 2) + '9' + clean.substring(2);
+        variations.push(`55${with9}`);
+        variations.push(`55${clean}`);
+      } else if (clean.length === 11) {
+        // Número com 9º dígito
+        variations.push(`55${clean}`);
+        // Também tenta sem o 9º dígito
+        if (clean.charAt(2) === '9') {
+          const without9 = clean.substring(0, 2) + clean.substring(3);
+          variations.push(`55${without9}`);
+        }
+      } else {
+        // Outros casos
+        variations.push(`55${clean}`);
+      }
+      
+      return variations;
+    };
+    
+    const phoneVariations = normalizePhone(studentData.phone);
+    console.log('Tentando enviar para números:', phoneVariations);
 
       const message = `Olá ${studentData.full_name}! 📸
 
@@ -276,19 +310,39 @@ Qualquer dúvida, estamos à disposição!
 Atenciosamente,
 Equipe Fotográfica`;
 
-      const response = await fetch(`${whatsappConfig.api_url}/message/sendText/${whatsappConfig.instance_name}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': whatsappConfig.api_key,
-        },
-        body: JSON.stringify({
-          number: `${formattedPhone}@s.whatsapp.net`,
-          text: message,
-        }),
-      });
+    // Tenta enviar para cada variação do número até conseguir
+    for (const phoneNumber of phoneVariations) {
+      try {
+        console.log(`Tentando enviar para: ${phoneNumber}`);
+        
+        const response = await fetch(`${whatsappConfig.api_url}/message/sendText/${whatsappConfig.instance_name}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': whatsappConfig.api_key,
+          },
+          body: JSON.stringify({
+            number: `${phoneNumber}@s.whatsapp.net`,
+            text: message,
+          }),
+        });
 
-      return response.ok;
+        const responseData = await response.json();
+        console.log(`Resposta para ${phoneNumber}:`, responseData);
+
+        if (response.ok && responseData.key) {
+          console.log(`✅ Mensagem enviada com sucesso para: ${phoneNumber}`);
+          return { success: true, phone: phoneNumber, messageId: responseData.key.id };
+        } else {
+          console.log(`❌ Falha ao enviar para ${phoneNumber}:`, responseData.message);
+        }
+      } catch (error) {
+        console.error(`Erro ao tentar ${phoneNumber}:`, error);
+      }
+    }
+    
+    console.log('❌ Falha ao enviar para todas as variações do número');
+    return { success: false, phone: phoneVariations[0], error: 'Não foi possível enviar para nenhuma variação do número' };
     } catch (error) {
       console.error('Error sending contract via WhatsApp:', error);
       return false;
@@ -428,7 +482,7 @@ Obrigado! 📷✨`;
       const cleanCpf = formData.cpf.replace(/\D/g, '');
 
       // Insert new student
-      const { error } = await supabase
+      const { data: newStudent, error } = await supabase
         .from('students')
         .insert([{
           user_id: photographerUserId,
@@ -442,7 +496,9 @@ Obrigado! 📷✨`;
           graduation_class_id: formData.graduation_class_id || null,
           notes: formData.notes + (paymentSelection ? `\n\nPacote: ${photoPackages.find(p => p.id === selectedPackage)?.name}\nForma de Pagamento: ${paymentSelection.payment_method}\nPreço: R$ ${paymentSelection.final_price?.toLocaleString('pt-BR')}` : '') || null,
           status: 'active',
-        }]);
+        }])
+        .select()
+        .single();
 
       if (error) throw error;
 
@@ -465,18 +521,36 @@ Obrigado! 📷✨`;
         );
 
         if (contract) {
-          await sendContractViaWhatsApp(
+          const contractResult = await sendContractViaWhatsApp(
             { ...formData, phone: cleanPhone },
             contract
           );
           
+          // Registrar o resultado do envio do contrato
+          await supabase
+            .from('students')
+            .update({
+              notes: (newStudent.notes || '') + `\n\n=== ENVIO DE CONTRATO ===\nData: ${new Date().toLocaleString('pt-BR')}\nStatus: ${contractResult.success ? 'ENVIADO COM SUCESSO' : 'FALHA NO ENVIO'}\nTelefone usado: ${contractResult.phone}\n${contractResult.error ? `Erro: ${contractResult.error}` : `ID da mensagem: ${contractResult.messageId}`}`,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', newStudent.id);
+          
           // Always send payment request after contract
-          await sendPaymentRequest(
+          const paymentResult = await sendPaymentRequest(
             { ...formData, phone: cleanPhone },
             packageData,
             paymentSelection,
             graduationClass
           );
+          
+          // Registrar o resultado do envio do pagamento
+          await supabase
+            .from('students')
+            .update({
+              notes: (newStudent.notes || '') + `\n\n=== ENVIO DE PAGAMENTO ===\nData: ${new Date().toLocaleString('pt-BR')}\nStatus: ${paymentResult ? 'ENVIADO COM SUCESSO' : 'FALHA NO ENVIO'}`,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', newStudent.id);
         }
       }
 
@@ -528,7 +602,7 @@ Obrigado! 📷✨`;
           </div>
         </div>
       </div>
-    );
+    return { success: false, error: error.message };
   }
 
   return (
