@@ -48,7 +48,7 @@ EOF
 fi
 
 echo "📦 Instalando dependências..."
-npm install
+npm install --production=false
 
 echo "🏗️  Fazendo build da aplicação..."
 npm run build

@@ -52,6 +52,13 @@ EOF
 fi
 
 echo "📦 Fazendo build da aplicação..."
+
+# Verificar se node_modules existe, se não, instalar dependências
+if [ ! -d "node_modules" ]; then
+    echo "📦 Instalando dependências..."
+    npm install
+fi
+
 npm run build
 
 echo "🐳 Iniciando containers Docker..."
