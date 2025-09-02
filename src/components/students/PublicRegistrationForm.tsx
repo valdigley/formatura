@@ -530,7 +530,7 @@ Obrigado! 📷✨`;
           await supabase
             .from('students')
             .update({
-              notes: (newStudent.notes || '') + `\n\n=== ENVIO DE CONTRATO ===\nData: ${new Date().toLocaleString('pt-BR')}\nStatus: ${contractResult.success ? '✅ ENVIADO COM SUCESSO' : '❌ FALHA NO ENVIO'}\nTelefone usado: ${contractResult.phone}\n${contractResult.error ? `Erro: ${contractResult.error}` : `ID da mensagem: ${contractResult.messageId}`}`,
+              notes: (newStudent.notes || '') + `\n\n=== ENVIO DE CONTRATO ===\nData: ${new Date().toLocaleString('pt-BR')}\nStatus: ${contractResult.success ? 'ENVIADO COM SUCESSO' : 'FALHA NO ENVIO'}\nTelefone usado: ${contractResult.phone}\n${contractResult.error ? `Erro: ${contractResult.error}` : `ID da mensagem: ${contractResult.messageId}`}`,
               updated_at: new Date().toISOString()
             })
             .eq('id', newStudent.id);
@@ -547,7 +547,7 @@ Obrigado! 📷✨`;
           await supabase
             .from('students')
             .update({
-              notes: (newStudent.notes || '') + `\n\n=== ENVIO DE PAGAMENTO ===\nData: ${new Date().toLocaleString('pt-BR')}\nStatus: ${paymentResult?.success ? '✅ ENVIADO COM SUCESSO' : '❌ FALHA NO ENVIO'}\n${paymentResult?.phone ? `Telefone usado: ${paymentResult.phone}` : ''}\n${paymentResult?.error ? `Erro: ${paymentResult.error}` : paymentResult?.messageId ? `ID da mensagem: ${paymentResult.messageId}` : ''}`,
+              notes: (newStudent.notes || '') + `\n\n=== ENVIO DE PAGAMENTO ===\nData: ${new Date().toLocaleString('pt-BR')}\nStatus: ${paymentResult ? 'ENVIADO COM SUCESSO' : 'FALHA NO ENVIO'}`,
               updated_at: new Date().toISOString()
             })
             .eq('id', newStudent.id);
