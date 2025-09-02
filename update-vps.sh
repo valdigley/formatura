@@ -26,65 +26,94 @@ tar -czf $BACKUP_DIR/backup_before_update_$DATE.tar.gz \
     --exclude=node_modules \
     --exclude=dist \
     --exclude=.git \
+    --exclude=logs \
     .
 
-echo "📥 Baixando nova versão..."
+echo "📥 Preparando nova versão..."
 # Se você estiver usando Git:
 # git pull origin main
 
-# Se você estiver enviando arquivos manualmente, descomente as linhas abaixo:
-# echo "📁 Substitua os arquivos do projeto manualmente e pressione Enter para continuar..."
-# read -p "Arquivos atualizados? (y/N): " confirm
-# if [[ $confirm != [yY] ]]; then
-#     echo "❌ Atualização cancelada"
-#     exit 1
-# fi
+# Se você estiver enviando arquivos manualmente:
+echo "📁 Certifique-se de que os novos arquivos foram copiados para $PROJECT_DIR"
+
+# Verificar se .env existe e tem as configurações necessárias
+if [ ! -f ".env" ]; then
+    echo "❌ Arquivo .env não encontrado!"
+    exit 1
+fi
+
+# Carregar variáveis do .env
+source .env
+
+if [[ -z "$VITE_SUPABASE_URL" || "$VITE_SUPABASE_URL" == "https://seu-projeto.supabase.co" ]]; then
+    echo "❌ Configure o VITE_SUPABASE_URL no arquivo .env!"
+    exit 1
+fi
 
 echo "📦 Atualizando dependências..."
-npm install
-
-echo "🏗️  Fazendo novo build..."
-npm run build
-
-# Verificar se está usando Docker
-if [ -f "docker-compose.yml" ]; then
-    echo "🐳 Atualizando containers Docker..."
-    docker-compose down
-    docker-compose up -d --build
-    
-    echo "🔍 Verificando status dos containers..."
-    docker-compose ps
-    
-elif command -v pm2 &> /dev/null; then
-    echo "🔄 Reiniciando aplicação com PM2..."
-    pm2 restart foto-formatura
-    pm2 status
-    
+if command -v node &> /dev/null; then
+    npm install
+    echo "🏗️  Fazendo novo build..."
+    npm run build
 else
-    echo "🌐 Recarregando Nginx..."
-    sudo systemctl reload nginx
+    echo "📦 Node.js não encontrado. Build será feito no Docker."
+fi
+
+echo "🐳 Atualizando containers Docker..."
+docker-compose down
+
+# Limpar imagens antigas para economizar espaço
+echo "🧹 Limpando imagens Docker antigas..."
+docker image prune -f
+
+# Subir novos containers
+docker-compose up -d --build
+
+# Aguardar containers iniciarem
+echo "⏳ Aguardando containers iniciarem..."
+sleep 15
+
+echo "🔍 Verificando status dos containers..."
+docker-compose ps
+
+# Verificar se a aplicação está funcionando
+echo "🌐 Testando aplicação atualizada..."
+sleep 5
+
+if curl -f http://localhost/health &>/dev/null; then
+    echo "✅ Aplicação atualizada está respondendo!"
+elif curl -f http://localhost/ &>/dev/null; then
+    echo "✅ Aplicação atualizada está funcionando!"
+else
+    echo "⚠️  Aplicação pode não estar respondendo. Verificando logs..."
+    docker-compose logs --tail=30
+    echo ""
+    echo "🔙 Se houver problemas, execute o rollback:"
+    echo "   docker-compose down"
+    echo "   tar -xzf $BACKUP_DIR/backup_before_update_$DATE.tar.gz"
+    echo "   docker-compose up -d --build"
 fi
 
 echo "🧹 Limpando arquivos antigos..."
 # Manter apenas últimos 5 backups
-find $BACKUP_DIR -name "backup_*.tar.gz" -type f | sort -r | tail -n +6 | xargs rm -f
+find $BACKUP_DIR -name "backup_*.tar.gz" -type f | sort -r | tail -n +6 | xargs rm -f 2>/dev/null || true
 
+echo ""
 echo "✅ Atualização concluída com sucesso!"
 echo ""
-echo "📋 VERIFICAÇÕES:"
-echo "1. Acesse: http://seu-ip ou https://seu-dominio.com"
-echo "2. Teste o login e funcionalidades principais"
-echo "3. Verifique se os contratos estão sendo enviados"
+echo "📋 VERIFICAÇÕES RECOMENDADAS:"
+echo "1. Acesse: http://$(curl -s ifconfig.me || echo 'seu-ip')"
+echo "2. Teste o login no sistema"
+echo "3. Verifique se o WhatsApp está conectado"
+echo "4. Teste o envio de contratos"
+echo "5. Verifique se o Mercado Pago está funcionando"
 echo ""
 echo "📊 LOGS ÚTEIS:"
-if [ -f "docker-compose.yml" ]; then
-    echo "- Logs da aplicação: docker-compose logs -f app"
-    echo "- Logs do nginx: docker-compose logs -f nginx"
-else
-    echo "- Logs da aplicação: pm2 logs foto-formatura"
-    echo "- Logs do sistema: sudo journalctl -u nginx -f"
-fi
+echo "- Logs da aplicação: docker-compose logs -f app"
+echo "- Logs do nginx: docker-compose logs -f nginx"
+echo "- Status dos containers: docker-compose ps"
 echo ""
 echo "🔙 ROLLBACK (se necessário):"
+echo "docker-compose down"
 echo "tar -xzf $BACKUP_DIR/backup_before_update_$DATE.tar.gz"
-echo "npm run build && pm2 restart foto-formatura"
+echo "docker-compose up -d --build"
