@@ -15,9 +15,9 @@ export const Header: React.FC<HeaderProps> = ({ currentPage, onPageChange }) => 
   const navigationItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Users },
     { id: 'students', label: 'Formandos', icon: Users },
-    { id: 'classes', label: 'Turmas de Formatura', icon: Calendar },
+    { id: 'classes', label: 'Turmas', icon: Calendar },
     { id: 'packages', label: 'Pacotes', icon: FileText },
-    { id: 'sessions', label: 'Sessões Fotográficas', icon: Calendar },
+    { id: 'sessions', label: 'Sessões', icon: Calendar },
     { id: 'payments', label: 'Pagamentos', icon: DollarSign },
     { id: 'reports', label: 'Relatórios', icon: FileText },
   ];
@@ -36,7 +36,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPage, onPageChange }) => 
               </h1>
             </div>
 
-            <nav className="hidden md:flex space-x-1">
+              Formaturas
               {navigationItems.map((item) => {
                 const Icon = item.icon;
                 return (
