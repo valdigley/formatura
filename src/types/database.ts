@@ -249,9 +249,8 @@ export interface Database {
       payment_transactions: {
         Row: {
           id: string;
-          student_id: string;
-          mercadopago_payment_id: string;
           student_id: string | null
+          mercadopago_payment_id: string;
           preference_id: string;
           external_reference: string;
           amount: number;
@@ -266,9 +265,8 @@ export interface Database {
         };
         Insert: {
           id?: string;
-          student_id: string;
-          mercadopago_payment_id?: string;
           student_id?: string | null
+          mercadopago_payment_id?: string;
           preference_id?: string;
           external_reference?: string;
           amount: number;
@@ -283,9 +281,8 @@ export interface Database {
         };
         Update: {
           id?: string;
-          student_id?: string;
-          mercadopago_payment_id?: string;
           student_id?: string | null
+          mercadopago_payment_id?: string;
           preference_id?: string;
           external_reference?: string;
           amount?: number;
@@ -295,6 +292,73 @@ export interface Database {
           payer_email?: string;
           metadata?: any;
           webhook_data?: any;
+          updated_at?: string;
+        };
+      };
+      students: {
+        Row: {
+          id: string;
+          user_id: string;
+          full_name: string;
+          email: string;
+          phone: string;
+          cpf: string | null;
+          birth_date: string | null;
+          address: string | null;
+          emergency_contact: string | null;
+          graduation_class_id: string | null;
+          notes: string | null;
+          status: string;
+          contract_sent_status: string;
+          contract_sent_at: string | null;
+          contract_sent_error: string | null;
+          payment_sent_status: string;
+          payment_sent_at: string | null;
+          payment_sent_error: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          full_name: string;
+          email: string;
+          phone: string;
+          cpf?: string | null;
+          birth_date?: string | null;
+          address?: string | null;
+          emergency_contact?: string | null;
+          graduation_class_id?: string | null;
+          notes?: string | null;
+          status?: string;
+          contract_sent_status?: string;
+          contract_sent_at?: string | null;
+          contract_sent_error?: string | null;
+          payment_sent_status?: string;
+          payment_sent_at?: string | null;
+          payment_sent_error?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          full_name?: string;
+          email?: string;
+          phone?: string;
+          cpf?: string | null;
+          birth_date?: string | null;
+          address?: string | null;
+          emergency_contact?: string | null;
+          graduation_class_id?: string | null;
+          notes?: string | null;
+          status?: string;
+          contract_sent_status?: string;
+          contract_sent_at?: string | null;
+          contract_sent_error?: string | null;
+          payment_sent_status?: string;
+          payment_sent_at?: string | null;
+          payment_sent_error?: string | null;
           updated_at?: string;
         };
       };
