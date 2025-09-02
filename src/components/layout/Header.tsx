@@ -36,7 +36,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPage, onPageChange }) => 
               </h1>
             </div>
 
-              Formaturas
+            <nav className="hidden md:flex space-x-4">
               {navigationItems.map((item) => {
                 const Icon = item.icon;
                 return (
