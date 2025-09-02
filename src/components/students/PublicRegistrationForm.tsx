@@ -602,7 +602,7 @@ Obrigado! 📷✨`;
           </div>
         </div>
       </div>
-    return { success: false, error: error.message };
+    );
   }
 
   return (
