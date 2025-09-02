@@ -130,8 +130,40 @@ export const StudentList: React.FC = () => {
 
     setSendingWhatsApp(student.id);
     try {
-      const cleanPhone = student.phone.replace(/\D/g, '');
-      const formattedPhone = cleanPhone.length === 11 ? `55${cleanPhone}` : cleanPhone;
+      // Função para normalizar e tentar diferentes formatos de telefone
+      const normalizePhone = (phone: string) => {
+        let clean = phone.replace(/\D/g, '');
+        
+        if (clean.startsWith('55')) {
+          clean = clean.substring(2);
+        }
+        
+        const variations = [];
+        
+        if (clean.length === 10) {
+          const with9 = clean.substring(0, 2) + '9' + clean.substring(2);
+          variations.push(`55${with9}`);
+          variations.push(`55${clean}`);
+          variations.push(with9);
+          variations.push(clean);
+        } else if (clean.length === 11) {
+          variations.push(`55${clean}`);
+          variations.push(clean);
+          if (clean.charAt(2) === '9') {
+            const without9 = clean.substring(0, 2) + clean.substring(3);
+            variations.push(`55${without9}`);
+            variations.push(without9);
+          }
+        } else {
+          variations.push(clean);
+          variations.push(`55${clean}`);
+        }
+        
+        return [...new Set(variations)];
+      };
+      
+      const phoneVariations = normalizePhone(student.phone);
+      console.log('Tentando enviar mensagem para números:', phoneVariations);
 
       const message = `Olá ${student.full_name}! 📸 
 
@@ -149,23 +181,72 @@ Qualquer dúvida, estamos à disposição!
 Atenciosamente,
 Equipe Fotográfica`;
 
-      const response = await fetch(`${whatsappConfig.api_url}/message/sendText/${whatsappConfig.instance_name}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': whatsappConfig.api_key,
-        },
-        body: JSON.stringify({
-          number: `${formattedPhone}@s.whatsapp.net`,
-          text: message,
-        }),
-      });
+      // Tenta enviar para cada variação do número até conseguir
+      let messageSent = false;
+      let lastError = '';
+      let successPhone = '';
+      
+      for (const phoneNumber of phoneVariations) {
+        try {
+          console.log(`Tentando enviar mensagem para: ${phoneNumber}`);
+          
+          const response = await fetch(`${whatsappConfig.api_url}/message/sendText/${whatsappConfig.instance_name}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': whatsappConfig.api_key,
+            },
+            body: JSON.stringify({
+              number: `${phoneNumber}@s.whatsapp.net`,
+              text: message,
+            }),
+          });
 
-      if (response.ok) {
-        alert('Mensagem enviada com sucesso!');
+          const responseData = await response.json();
+          console.log(`Resposta para ${phoneNumber}:`, responseData);
+
+          if (response.ok && responseData.key) {
+            console.log(`✅ Mensagem enviada com sucesso para: ${phoneNumber}`);
+            messageSent = true;
+            successPhone = phoneNumber;
+            
+            // Update student notes with success
+            const successDetails = `ENVIADO COM SUCESSO\nTelefone: ${phoneNumber}\nRemote JID: ${responseData.key.remoteJid || 'N/A'}\nID da mensagem: ${responseData.key.id || 'N/A'}`;
+            
+            await supabase
+              .from('students')
+              .update({
+                notes: (student.notes || '') + `\n\n=== ENVIO DE MENSAGEM ===\nData: ${new Date().toLocaleString('pt-BR')}\nStatus: ${successDetails}`,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', student.id);
+            
+            break;
+          } else {
+            lastError = responseData.message || `Erro HTTP: ${response.status}`;
+            console.log(`❌ Falha ao enviar mensagem para ${phoneNumber}:`, lastError);
+          }
+        } catch (error: any) {
+          lastError = error.message;
+          console.error(`Erro ao tentar enviar mensagem para ${phoneNumber}:`, error);
+        }
+      }
+      
+      if (messageSent) {
+        alert(`Mensagem enviada com sucesso para ${successPhone}!`);
       } else {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Erro ao enviar mensagem');
+        // Update student notes with failure
+        const failureDetails = `FALHA NO ENVIO\nErro: ${lastError}\nTelefones tentados: ${phoneVariations.join(', ')}`;
+        
+        await supabase
+          .from('students')
+          .update({
+            notes: (student.notes || '') + `\n\n=== ENVIO DE MENSAGEM ===\nData: ${new Date().toLocaleString('pt-BR')}\nStatus: ${failureDetails}`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', student.id);
+        
+        throw new Error(`Falha ao enviar para todos os números testados. Último erro: ${lastError}. Números tentados: ${phoneVariations.join(', ')}`);
       }
     } catch (error: any) {
       alert(`Erro ao enviar WhatsApp: ${error.message}`);
@@ -270,9 +351,58 @@ Equipe Fotográfica`;
           }
         }]);
       
-      // Send WhatsApp message with payment link
-      const cleanPhone = student.phone.replace(/\D/g, '');
-      const formattedPhone = cleanPhone.length === 11 ? `55${cleanPhone}` : cleanPhone;
+      // Função para normalizar e tentar diferentes formatos de telefone
+      const normalizePhone = (phone: string) => {
+        let clean = phone.replace(/\D/g, '');
+        
+        // Remove código do país se presente
+        if (clean.startsWith('55')) {
+          clean = clean.substring(2);
+        }
+        
+        // Retorna diferentes variações do número
+        const variations = [];
+        
+        if (clean.length === 10) {
+          // Número sem 9º dígito - adiciona o 9
+          const with9 = clean.substring(0, 2) + '9' + clean.substring(2);
+          variations.push(`55${with9}`);
+          variations.push(`55${clean}`);
+          variations.push(with9);
+          variations.push(clean);
+        } else if (clean.length === 11) {
+          // Número com 9º dígito
+          variations.push(`55${clean}`);
+          variations.push(clean);
+          // Também tenta sem o 9º dígito
+          if (clean.charAt(2) === '9') {
+            const without9 = clean.substring(0, 2) + clean.substring(3);
+            variations.push(`55${without9}`);
+            variations.push(without9);
+          }
+        } else if (clean.length === 13 && clean.startsWith('55')) {
+          // Número já com código do país
+          variations.push(clean);
+          const withoutCountry = clean.substring(2);
+          variations.push(withoutCountry);
+          // Tenta variações com/sem 9º dígito
+          if (withoutCountry.length === 11 && withoutCountry.charAt(2) === '9') {
+            const without9 = withoutCountry.substring(0, 2) + withoutCountry.substring(3);
+            variations.push(`55${without9}`);
+            variations.push(without9);
+          }
+        } else {
+          // Outros casos - tenta como está e com código do país
+          variations.push(clean);
+          variations.push(`55${clean}`);
+        }
+        
+        // Remove duplicatas e retorna
+        return [...new Set(variations)];
+      };
+      
+      const phoneVariations = normalizePhone(student.phone);
+      console.log('Tentando enviar pagamento para números:', phoneVariations);
 
       const message = `Olá ${student.full_name}! 📸💰
 
@@ -300,22 +430,76 @@ ${paymentLink}
 
 Obrigado pela confiança! 📷✨`;
 
-      const whatsappResponse = await fetch(`${whatsappConfig.api_url}/message/sendText/${whatsappConfig.instance_name}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': whatsappConfig.api_key,
-        },
-        body: JSON.stringify({
-          number: `${formattedPhone}@s.whatsapp.net`,
-          text: message,
-        }),
-      });
+      // Tenta enviar para cada variação do número até conseguir
+      let messageSent = false;
+      let lastError = '';
+      let successPhone = '';
+      
+      for (const phoneNumber of phoneVariations) {
+        try {
+          console.log(`Tentando enviar pagamento para: ${phoneNumber}`);
+          
+          const whatsappResponse = await fetch(`${whatsappConfig.api_url}/message/sendText/${whatsappConfig.instance_name}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': whatsappConfig.api_key,
+            },
+            body: JSON.stringify({
+              number: `${phoneNumber}@s.whatsapp.net`,
+              text: message,
+            }),
+          });
 
-      if (whatsappResponse.ok) {
-        alert('Link de pagamento enviado via WhatsApp com sucesso!');
+          const responseData = await whatsappResponse.json();
+          console.log(`Resposta para ${phoneNumber}:`, responseData);
+
+          if (whatsappResponse.ok && responseData.key) {
+            console.log(`✅ Pagamento enviado com sucesso para: ${phoneNumber}`);
+            messageSent = true;
+            successPhone = phoneNumber;
+            
+            // Update student notes with success
+            const successDetails = `ENVIADO COM SUCESSO\nTelefone: ${phoneNumber}\nRemote JID: ${responseData.key.remoteJid || 'N/A'}\nID da mensagem: ${responseData.key.id || 'N/A'}`;
+            
+            await supabase
+              .from('students')
+              .update({
+                notes: (student.notes || '') + `\n\n=== ENVIO DE PAGAMENTO ===\nData: ${new Date().toLocaleString('pt-BR')}\nStatus: ${successDetails}`,
+                payment_sent_status: 'sent',
+                payment_sent_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', student.id);
+            
+            break;
+          } else {
+            lastError = responseData.message || `Erro HTTP: ${whatsappResponse.status}`;
+            console.log(`❌ Falha ao enviar pagamento para ${phoneNumber}:`, lastError);
+          }
+        } catch (error: any) {
+          lastError = error.message;
+          console.error(`Erro ao tentar enviar pagamento para ${phoneNumber}:`, error);
+        }
+      }
+      
+      if (messageSent) {
+        alert(`Link de pagamento enviado via WhatsApp com sucesso para ${successPhone}!`);
       } else {
-        throw new Error('Erro ao enviar mensagem via WhatsApp');
+        // Update student notes with failure
+        const failureDetails = `FALHA NO ENVIO\nErro: ${lastError}\nTelefones tentados: ${phoneVariations.join(', ')}`;
+        
+        await supabase
+          .from('students')
+          .update({
+            notes: (student.notes || '') + `\n\n=== ENVIO DE PAGAMENTO ===\nData: ${new Date().toLocaleString('pt-BR')}\nStatus: ${failureDetails}`,
+            payment_sent_status: 'failed',
+            payment_sent_error: lastError,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', student.id);
+        
+        throw new Error(`Falha ao enviar para todos os números testados. Último erro: ${lastError}`);
       }
 
     } catch (error: any) {
@@ -541,9 +725,9 @@ Obrigado pela confiança! 📷✨`;
               )}
               
               {/* Contract and Payment Status */}
-              {student.notes && student.notes.includes('=== ENVIO DE CONTRATO ===') && (
+              {(student.contract_sent_status === 'sent' || (student.notes && student.notes.includes('=== ENVIO DE CONTRATO ==='))) && (
                 <div className="flex items-center space-x-2 text-xs">
-                  {student.notes.includes('ENVIADO COM SUCESSO') ? (
+                  {student.contract_sent_status === 'sent' || (student.notes && student.notes.includes('ENVIADO COM SUCESSO')) ? (
                     <>
                       <CheckCircle className="h-3 w-3 text-green-500" />
                       <span className="text-green-600 dark:text-green-400">Contrato enviado</span>
@@ -557,9 +741,9 @@ Obrigado pela confiança! 📷✨`;
                 </div>
               )}
               
-              {student.notes && student.notes.includes('=== ENVIO DE PAGAMENTO ===') && (
+              {(student.payment_sent_status === 'sent' || (student.notes && student.notes.includes('=== ENVIO DE PAGAMENTO ==='))) && (
                 <div className="flex items-center space-x-2 text-xs">
-                  {student.notes.includes('ENVIADO COM SUCESSO') && student.notes.includes('=== ENVIO DE PAGAMENTO ===') ? (
+                  {student.payment_sent_status === 'sent' || (student.notes && student.notes.includes('ENVIADO COM SUCESSO') && student.notes.includes('=== ENVIO DE PAGAMENTO ===')) ? (
                     <>
                       <CheckCircle className="h-3 w-3 text-green-500" />
                       <span className="text-green-600 dark:text-green-400">Pagamento enviado</span>
