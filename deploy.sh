@@ -48,11 +48,7 @@ if ! command -v docker-compose &> /dev/null; then
     echo "✅ Docker Compose instalado."
 fi
 
-# Definir diretório do projeto
-PROJECT_DIR="/opt/foto-formatura"
-echo "📁 Configurando projeto em: $PROJECT_DIR"
-
-# Verificar se arquivo .env existe
+# Verificar arquivo .env
 if [ ! -f ".env" ]; then
     echo "⚠️  Arquivo .env não encontrado. Criando template..."
     cat > .env << EOF
@@ -68,9 +64,7 @@ DOMAIN=seu-dominio.com
 EMAIL=seu-email@exemplo.com
 EOF
     echo "📝 Arquivo .env criado. EDITE-O com suas configurações antes de continuar!"
-    echo "   Arquivo localizado em: $PROJECT_DIR/.env"
-    echo ""
-    echo "🔧 Para editar: nano $PROJECT_DIR/.env"
+    echo "   Para editar: nano .env"
     echo ""
     echo "⚠️  IMPORTANTE: Configure o .env antes de continuar!"
     exit 1
@@ -80,13 +74,13 @@ fi
 source .env
 if [[ -z "$VITE_SUPABASE_URL" || "$VITE_SUPABASE_URL" == "https://seu-projeto.supabase.co" ]]; then
     echo "❌ Configure o VITE_SUPABASE_URL no arquivo .env primeiro!"
-    echo "   Edite: nano $PROJECT_DIR/.env"
+    echo "   Para editar: nano .env"
     exit 1
 fi
 
 if [[ -z "$VITE_SUPABASE_ANON_KEY" || "$VITE_SUPABASE_ANON_KEY" == "sua-chave-anonima" ]]; then
     echo "❌ Configure o VITE_SUPABASE_ANON_KEY no arquivo .env primeiro!"
-    echo "   Edite: nano $PROJECT_DIR/.env"
+    echo "   Para editar: nano .env"
     exit 1
 fi
 
@@ -147,7 +141,6 @@ echo "✅ Deploy concluído com sucesso!"
 echo ""
 echo "📋 INFORMAÇÕES DO DEPLOY:"
 echo "- Aplicação: http://$(curl -s ifconfig.me || echo 'seu-ip')"
-echo "- Diretório: $PROJECT_DIR"
 echo "- Logs: docker-compose logs -f"
 echo ""
 echo "📋 PRÓXIMOS PASSOS:"
