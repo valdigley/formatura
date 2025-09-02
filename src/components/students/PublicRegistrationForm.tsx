@@ -533,33 +533,33 @@ Obrigado! 📷✨`;
             console.log(`✅ Pagamento enviado com sucesso para: ${phoneNumber}`);
             return { 
               success: true, 
-              ph\one: phoneNumber, 
+              phone: phoneNumber, 
               messageId: responseData.key.id,
               remoteJid: responseData.key.remoteJid 
-\            };
+            };
           } else {
             console.log(`❌ Falha ao enviar pagamento para ${phoneNumber}:`, responseData.message || 'Erro desconhecido');
           }
-        } catch\\ (error) {
-          console.error(`Erro ao tentar enviar pagamento para ${phoneNumber\}:`, error);
+        } catch (error) {
+          console.error(`Erro ao tentar enviar pagamento para ${phoneNumber}:`, error);
         }
       }
-    \  
+      
       return { 
-       \ success: false, 
+        success: false, 
         error: 'Não foi possível enviar para nenhuma variação do número',
-        attemptedNumbers: phon\eVariations
+        attemptedNumbers: phoneVariations
       };
     } catch (error) {
       console.error('Error sending payment request:', error);
       return { 
         success: false, 
-        error: error.message || 'Erro interno ao\ enviar pagamento'
+        error: error.message || 'Erro interno ao enviar pagamento'
       };
- \   }
+    }
   };
 
- \ co\nst\ handleSubmit =\\ async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
@@ -585,10 +585,10 @@ Obrigado! 📷✨`;
           phone: cleanPhone,
           cpf: cleanCpf || null,
           birth_date: formData.birth_date || null,
-          address: formData.address ? \`${formData.address}, ${formData.city}` : null,
+          address: formData.address ? `${formData.address}, ${formData.city}` : null,
           emergency_contact: formData.emergency_contact || null,
           graduation_class_id: formData.graduation_class_id || null,
-          notes: formData.notes + (paymentSelection ? \`\n\nPacote: ${photoPackages.find(p => p.id === selectedPackage)?.name}\nForma de Pagamento: ${paymentSelection.payment_method}\nPreço: R$ ${paymentSelection.final_price?.toLocaleString('pt-BR')}` : '') || null,
+          notes: formData.notes + (paymentSelection ? `\n\nPacote: ${photoPackages.find(p => p.id === selectedPackage)?.name}\nForma de Pagamento: ${paymentSelection.payment_method}\nPreço: R$ ${paymentSelection.final_price?.toLocaleString('pt-BR')}` : '') || null,
           status: 'active',
         }])
         .select()
@@ -623,13 +623,13 @@ Obrigado! 📷✨`;
           // Registrar o resultado do envio do contrato
           const contractStatus = contractResult.success ? 'sent_success' : 'sent_failed';
           const contractDetails = contractResult.success 
-            ? \`ENVIADO COM SUCESSO\nTelefone: ${contractResult.phone}\nRemote JID: ${contractResult.remoteJid || 'N/A'}\nID da mensagem: ${contractResult.messageId || 'N/A'}`
-            : \`FALHA NO ENVIO\nErro: ${contractResult.error}\nTelefones tentados: ${contractResult.attemptedNumbers?.join(', ') || contractResult.phone}`;
+            ? `ENVIADO COM SUCESSO\nTelefone: ${contractResult.phone}\nRemote JID: ${contractResult.remoteJid || 'N/A'}\nID da mensagem: ${contractResult.messageId || 'N/A'}`
+            : `FALHA NO ENVIO\nErro: ${contractResult.error}\nTelefones tentados: ${contractResult.attemptedNumbers?.join(', ') || contractResult.phone}`;
             
           await supabase
             .from('students')
             .update({
-              notes: (newStudent.notes || '') + \`\n\n=== ENVIO DE CONTRATO ===\nData: ${new Date().toLocaleString('pt-BR')}\nStatus: ${contractDetails}`,
+              notes: (newStudent.notes || '') + `\n\n=== ENVIO DE CONTRATO ===\nData: ${new Date().toLocaleString('pt-BR')}\nStatus: ${contractDetails}`,
               updated_at: new Date().toISOString()
             })
             .eq('id', newStudent.id);
@@ -644,13 +644,13 @@ Obrigado! 📷✨`;
           
           // Registrar o resultado do envio do pagamento
           const paymentDetails = paymentResult.success 
-            ? \`ENVIADO COM SUCESSO\nTelefone: ${paymentResult.phone}\nRemote JID: ${paymentResult.remoteJid || 'N/A'}\nID da mensagem: ${paymentResult.messageId || 'N/A'}`
-            : \`FALHA NO ENVIO\nErro: ${paymentResult.error}\nTelefones tentados: ${paymentResult.attemptedNumbers?.join(', ') || 'N/A'}`;
+            ? `ENVIADO COM SUCESSO\nTelefone: ${paymentResult.phone}\nRemote JID: ${paymentResult.remoteJid || 'N/A'}\nID da mensagem: ${paymentResult.messageId || 'N/A'}`
+            : `FALHA NO ENVIO\nErro: ${paymentResult.error}\nTelefones tentados: ${paymentResult.attemptedNumbers?.join(', ') || 'N/A'}`;
             
           await supabase
             .from('students')
             .update({
-              notes: (newStudent.notes || '') + \`\n\n=== ENVIO DE PAGAMENTO ===\nData: ${new Date().toLocaleString('pt-BR')}\nStatus: ${paymentDetails}`,
+              notes: (newStudent.notes || '') + `\n\n=== ENVIO DE PAGAMENTO ===\nData: ${new Date().toLocaleString('pt-BR')}\nStatus: ${paymentDetails}`,
               updated_at: new Date().toISOString()
             })
             .eq('id', newStudent.id);
@@ -956,7 +956,7 @@ Obrigado! 📷✨`;
                     <div className="text-sm text-green-800 dark:text-green-300">
                       <strong>Resumo do Pagamento:</strong><br />
                       Método: {paymentSelection.payment_method}<br />
-                      {paymentSelection.installments > 1 && \`Parcelas: ${paymentSelection.installments}x<br />`}
+                      {paymentSelection.installments > 1 && `Parcelas: ${paymentSelection.installments}x<br />`}
                       {paymentSelection.discount > 0 && `Desconto: ${paymentSelection.discount}%<br />`}
                       <strong>Valor Final: R$ {paymentSelection.final_price?.toLocaleString('pt-BR')}</strong>
                     </div>
