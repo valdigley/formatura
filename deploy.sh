@@ -52,23 +52,6 @@ fi
 PROJECT_DIR="/opt/foto-formatura"
 echo "📁 Configurando projeto em: $PROJECT_DIR"
 
-# Criar diretório do projeto se não existir
-if [ ! -d "$PROJECT_DIR" ]; then
-    echo "📁 Criando diretório do projeto..."
-    sudo mkdir -p $PROJECT_DIR
-    sudo chown $USER:$USER $PROJECT_DIR
-fi
-
-# Copiar arquivos para o diretório do projeto se estivermos em outro local
-CURRENT_DIR=$(pwd)
-if [ "$CURRENT_DIR" != "$PROJECT_DIR" ]; then
-    echo "📋 Copiando arquivos para $PROJECT_DIR..."
-    sudo cp -r . $PROJECT_DIR/
-    sudo chown -R $USER:$USER $PROJECT_DIR
-fi
-
-cd $PROJECT_DIR
-
 # Verificar se arquivo .env existe
 if [ ! -f ".env" ]; then
     echo "⚠️  Arquivo .env não encontrado. Criando template..."
