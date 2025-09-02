@@ -436,28 +436,51 @@ export const Dashboard: React.FC = () => {
                         minute: '2-digit'
                       })}
                     </p>
-                    {activity.type === 'student' && activity.contractStatus && activity.contractStatus !== 'unknown' && (
-                      <div className="flex items-center space-x-1 mt-1">
-                        {activity.contractStatus === 'sent_success' ? (
-                          <>
-                            <CheckCircle className="h-3 w-3 text-green-500" />
-                            <span className="text-xs text-green-600 dark:text-green-400">Contrato enviado</span>
-                          </>
-                        ) : activity.contractStatus === 'sent_failed' ? (
-                          <>
-                            <AlertCircle className="h-3 w-3 text-red-500" />
-                            <span className="text-xs text-red-600 dark:text-red-400">Falha no envio</span>
-                          </>
-                        ) : (
-                          <>
-                            <Clock className="h-3 w-3 text-yellow-500" />
-                            <span className="text-xs text-yellow-600 dark:text-yellow-400">Status desconhecido</span>
-                          </>
-                        )}
+                    {activity.type === 'student' && (
+                      <div className="flex flex-col space-y-1 mt-1">
+                        {/* Contract Status */}
+                        <div className="flex items-center space-x-1">
+                          {activity.contractStatus === 'sent_success' ? (
+                            <>
+                              <CheckCircle className="h-3 w-3 text-green-500" />
+                              <span className="text-xs text-green-600 dark:text-green-400">Contrato enviado</span>
+                            </>
+                          ) : activity.contractStatus === 'sent_failed' ? (
+                            <>
+                              <AlertCircle className="h-3 w-3 text-red-500" />
+                              <span className="text-xs text-red-600 dark:text-red-400">Falha no contrato</span>
+                            </>
+                          ) : activity.contractStatus === 'not_sent' ? (
+                            <>
+                              <Clock className="h-3 w-3 text-yellow-500" />
+                              <span className="text-xs text-yellow-600 dark:text-yellow-400">Contrato não enviado</span>
+                            </>
+                          ) : null}
+                        </div>
+                        
+                        {/* Payment Status */}
+                        <div className="flex items-center space-x-1">
+                          {activity.paymentStatus === 'sent_success' ? (
+                            <>
+                              <CheckCircle className="h-3 w-3 text-green-500" />
+                              <span className="text-xs text-green-600 dark:text-green-400">Pagamento enviado</span>
+                            </>
+                          ) : activity.paymentStatus === 'sent_failed' ? (
+                            <>
+                              <AlertCircle className="h-3 w-3 text-red-500" />
+                              <span className="text-xs text-red-600 dark:text-red-400">Falha no pagamento</span>
+                            </>
+                          ) : activity.paymentStatus === 'not_sent' ? (
+                            <>
+                              <Clock className="h-3 w-3 text-yellow-500" />
+                              <span className="text-xs text-yellow-600 dark:text-yellow-400">Pagamento não enviado</span>
+                            </>
+                          ) : null}
+                        </div>
                       </div>
                     )}
                   </div>
-                  {activity.type === 'student' && activity.contractStatus === 'sent_failed' && (
+                  {activity.type === 'student' && (activity.contractStatus === 'sent_failed' || activity.paymentStatus === 'sent_failed') && (
                     <div className="absolute top-2 right-2">
                       <div className="h-2 w-2 bg-red-500 rounded-full animate-pulse"></div>
                     </div>
