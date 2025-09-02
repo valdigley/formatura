@@ -1,207 +1,255 @@
-# Sistema de Gestão de Sessões Fotográficas
+# Formatura – Sistema de Gestão de Turmas
 
-Sistema completo para gerenciamento de sessões fotográficas de formatura com integração WhatsApp e Mercado Pago.
+> App web em **React + Vite + TypeScript** com backend **Supabase** (Auth, PostgREST e Edge Functions). Deploy estático (Nginx) com **PM2** servindo a pasta `dist` em `127.0.0.1:8080`.
 
-## 🚀 Deploy em VPS
+---
 
-### Opção 1: Deploy com Docker (Recomendado)
+## Sumário
 
-1. **Conecte na VPS e prepare os arquivos:**
+* [Arquitetura](#arquitetura)
+* [Requisitos](#requisitos)
+* [Variáveis de ambiente](#variáveis-de-ambiente)
+* [Setup local (dev)](#setup-local-dev)
+* [Build](#build)
+* [Deploy manual na VPS](#deploy-manual-na-vps)
+* [Primeira instalação na VPS](#primeira-instalação-na-vps)
+* [Fluxo de versionamento (Git)](#fluxo-de-versionamento-git)
+* [Troubleshooting](#troubleshooting)
+
+---
+
+## Arquitetura
+
+* **Frontend**: React + Vite (build estático em `dist/`, assets com hash para cache busting).
+* **Auth e dados**: Supabase (URL e `anon key` via variáveis `VITE_*`).
+* **Edge Functions**: chamadas HTTP (ex.: Mercado Pago) hospedadas no Supabase Functions.
+* **Servidor**: Nginx (reverse proxy) ➜ PM2 servindo a pasta `dist` na porta 8080.
+
+> Importante: **nunca** commitar segredos. O arquivo `.env` é ignorado pelo Git; use **`.env.sample`** como referência.
+
+---
+
+## Requisitos
+
+* Node **v20+** e npm
+* Git
+* Projeto **Supabase** ativo (URL e chave pública **anon**)
+* VPS com **Nginx** e **PM2**
+
+---
+
+## Variáveis de ambiente
+
+Crie um arquivo `.env` na raiz (baseado em `.env.sample`).
+
 ```bash
-# Conectar na VPS
-ssh usuario@seu-ip
-
-# Criar diretório e enviar arquivos
-sudo mkdir -p /opt/foto-formatura
-sudo chown $USER:$USER /opt/foto-formatura
-
-# Enviar arquivos via SCP (do seu computador local):
-scp -r . usuario@seu-ip:/opt/foto-formatura/
+VITE_SUPABASE_URL=https://SEU-PROJ.supabase.co
+VITE_SUPABASE_ANON_KEY=sua_anon_key_publica_aqui
 ```
 
-2. **Configure o ambiente:**
+> Essas variáveis são **embutidas no bundle** do Vite. Se mudar, **rebuild** é obrigatório.
+
+---
+
+## Setup local (dev)
+
 ```bash
-cd /opt/foto-formatura
+# clonar
+git clone https://github.com/valdigley/formatura.git
+cd formatura
 
-# Copiar e editar arquivo de configuração
-cp .env.example .env
-nano .env
+# preparar .env
+cp .env.sample .env
+# edite .env com sua URL e ANON KEY do Supabase
 
-# Configure suas credenciais do Supabase:
-# VITE_SUPABASE_URL=https://seu-projeto.supabase.co
-# VITE_SUPABASE_ANON_KEY=sua-chave-anonima
+# instalar deps e rodar
+npm ci
+npm run dev
 ```
 
-3. **Execute o deploy:**
-```bash
-chmod +x deploy.sh
-./deploy.sh
-```
+Abra [http://localhost:5173](http://localhost:5173).
 
-### Opção 2: Deploy Manual (sem Docker)
+---
+
+## Build
 
 ```bash
-chmod +x deploy-manual.sh
-./deploy-manual.sh
-```
-
-## 🔄 Atualizações
-
-Para atualizar o sistema na VPS:
-
-```bash
-cd /opt/foto-formatura
-chmod +x update-vps.sh
-./update-vps.sh
-```
-
-## 🛠️ Funcionalidades
-
-### 📸 Gestão de Formandos
-- Cadastro completo de formandos
-- Formulário público para auto-cadastro
-- Integração com turmas de formatura
-- Status de envio de contratos e pagamentos
-
-### 📅 Sessões Fotográficas
-- Agendamento de sessões
-- Controle de produção
-- Integração com Google Calendar
-- Gestão de pacotes fotográficos
-
-### 💰 Sistema de Pagamentos
-- Integração com Mercado Pago
-- Links de pagamento automáticos
-- Webhooks para confirmação
-- Controle financeiro completo
-
-### 📱 WhatsApp Automático
-- Envio automático de contratos
-- Solicitações de pagamento
-- Confirmações de recebimento
-- Múltiplos formatos de telefone
-
-### 📊 Dashboard e Relatórios
-- Métricas em tempo real
-- Gráficos de performance
-- Relatórios exportáveis
-- Alertas e notificações
-
-## ⚙️ Configuração
-
-### 1. Supabase
-- Configure as tabelas usando as migrations
-- Configure RLS (Row Level Security)
-- Configure as Edge Functions
-
-### 2. WhatsApp (Evolution API)
-- Configure uma instância da Evolution API
-- Conecte o WhatsApp via QR Code
-- Configure as credenciais no sistema
-
-### 3. Mercado Pago
-- Crie uma aplicação no painel de desenvolvedores
-- Configure credenciais de sandbox/produção
-- Configure webhooks para notificações
-
-## 🔒 Segurança
-
-### SSL/HTTPS
-```bash
-sudo apt install certbot python3-certbot-nginx
-sudo certbot --nginx -d seu-dominio.com
-```
-
-### Firewall
-```bash
-sudo ufw allow 80
-sudo ufw allow 443
-sudo ufw allow ssh
-sudo ufw enable
-```
-
-## 📋 Monitoramento
-
-### Logs
-```bash
-# Docker
-docker-compose logs -f
-
-# PM2
-pm2 logs foto-formatura
-
-# Nginx
-sudo tail -f /var/log/nginx/error.log
-```
-
-### Status
-```bash
-# Docker
-docker-compose ps
-
-# PM2
-pm2 status
-
-# Nginx
-sudo systemctl status nginx
-```
-
-## 🆘 Solução de Problemas
-
-### Aplicação não carrega
-1. Verificar logs: `docker-compose logs -f`
-2. Verificar .env: `cat .env`
-3. Testar conexão: `curl http://localhost/health`
-
-### WhatsApp não envia
-1. Verificar conexão nas configurações
-2. Testar com mensagem de teste
-3. Verificar logs de erro nos formandos
-
-### Pagamentos não funcionam
-1. Verificar credenciais do Mercado Pago
-2. Testar conexão nas configurações
-3. Verificar webhooks no painel MP
-
-## 📞 Suporte
-
-Para problemas específicos:
-1. Verificar logs detalhados
-2. Testar configurações individuais
-3. Verificar conectividade de rede
-4. Validar credenciais das APIs
-
-## 🔄 Backup e Restore
-
-### Backup automático
-```bash
-# Criar backup
-tar -czf backup_$(date +%Y%m%d_%H%M%S).tar.gz \
-    --exclude=node_modules \
-    --exclude=dist \
-    --exclude=.git \
-    .
-```
-
-### Restore
-```bash
-# Restaurar backup
-tar -xzf backup_YYYYMMDD_HHMMSS.tar.gz
+npm ci
 npm run build
-docker-compose up -d --build
+# saída em dist/
 ```
 
-## 📈 Performance
+---
 
-### Otimizações incluídas:
-- Compressão Gzip
-- Cache de assets estáticos
-- Otimização de imagens
-- Minificação de código
-- Headers de segurança
+## Deploy manual na VPS
 
-### Monitoramento:
-- Health checks automáticos
-- Logs estruturados
-- Métricas de performance
-- Alertas de sistema
+> Fluxo usado em produção. Supõe que o código é buildado em `/opt/builds/formatura-build` e publicado para `/opt/foto-formatura/dist`.
+
+```bash
+APP_DIR="/opt/foto-formatura"
+cd /opt/builds/formatura-build
+
+# atualizar código a partir do main (ou branch desejada)
+git checkout main && git pull
+
+# (garanta .env correto) – NÃO comitar .env
+npm ci && npm run build
+
+# backup e publicação
+sudo mkdir -p "$APP_DIR/_backups"
+TS=$(date +%Y%m%d-%H%M%S)
+[ -d "$APP_DIR/dist" ] && sudo mv "$APP_DIR/dist" "$APP_DIR/_backups/dist-$TS"
+
+sudo rsync -a --delete dist/ "$APP_DIR/dist/"
+sudo chown -R www-data:www-data "$APP_DIR/dist"
+
+# reiniciar serviço estático
+pm2 restart foto-formatura
+pm2 save
+```
+
+**Reiniciar sem rebuild** (quando só quer recomeçar o serviço):
+
+```bash
+pm2 restart foto-formatura && pm2 save
+```
+
+Validar rapidamente:
+
+```bash
+curl -I http://127.0.0.1:8080/ | head -n1
+# e via domínio
+curl -I https://SEU_DOMINIO/ | head -n1
+```
+
+---
+
+## Primeira instalação na VPS
+
+> Execute apenas na **primeira vez**.
+
+```bash
+sudo mkdir -p /opt/builds && cd /opt/builds
+
+# pegar o código
+git clone https://github.com/valdigley/formatura.git formatura-build
+cd formatura-build
+
+# CRIAR .env (NÃO commitar)
+cp .env.sample .env
+# edite .env com VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY
+
+npm ci && npm run build
+
+# publicar
+sudo mkdir -p /opt/foto-formatura
+sudo rsync -a --delete dist/ /opt/foto-formatura/dist/
+sudo chown -R www-data:www-data /opt/foto-formatura/dist
+
+# PM2 servindo estático na porta 8080
+pm2 start "npx serve -s /opt/foto-formatura/dist -l 8080" --name foto-formatura
+pm2 save
+```
+
+Exemplo de **server block** Nginx (proxy para 127.0.0.1:8080):
+
+```nginx
+server {
+  server_name formatura.seu-dominio.com;
+  location / {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+}
+```
+
+> Ajuste o domínio e faça o reload do Nginx após habilitar TLS (certbot/letsencrypt).
+
+---
+
+## Fluxo de versionamento (Git)
+
+* Crie branches de trabalho a partir de `main`, ex.: `server-fixes-YYYYMMDD-HHMM`.
+* **Nunca** commite `.env`. O repo já ignora `.env` e inclui `.env.sample`.
+* Ao finalizar, **abra um Pull Request** para `main` e faça o merge. Isso **não** faz deploy automático (manual conforme seção *Deploy*).
+
+Comandos úteis:
+
+```bash
+# a partir do diretório de build na VPS
+git checkout -b server-fixes-YYYYMMDD-HHMM
+# edite/adicione arquivos
+git add -A
+git commit -m "feat/fix: descrição"
+git push -u origin server-fixes-YYYYMMDD-HHMM
+# abra PR no GitHub e faça o merge para main
+```
+
+---
+
+## Troubleshooting
+
+### 1) **Auth 401 / "Invalid API key"**
+
+* Verifique `.env` (`VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`).
+* **Rebuild obrigatório** após editar `.env`: `npm run build` e republicar `dist/`.
+* Teste direto a API: `curl -I "$VITE_SUPABASE_URL/auth/v1/health"`.
+
+### 2) Página não atualiza / cache
+
+* Vite gera nomes com **hash** (`index-xxxxx.js`). O HTML `index.html` aponta para o novo arquivo após rebuild.
+* Se continuar vendo versão antiga, limpe cache do navegador ou force reload.
+* Confira qual bundle está servindo:
+
+  ```bash
+  curl -sS https://SEU_DOMINIO/ | grep -Eo 'assets/index-[^"\)]+'
+  ```
+
+### 3) `vite.svg` 404
+
+* Opcional. Se o app referenciar `/vite.svg`, coloque uma cópia em `/opt/foto-formatura/dist/vite.svg`.
+
+### 4) Evolution API – HTTP 400 ao enviar WhatsApp
+
+* Cheque **URL**, **API Key** e **instance name** nas configurações salvas no app.
+* Formatação do número: teste variações `55DDD9xxxxxxx`, `DDD9xxxxxxx`, etc. (o app já tenta variações comuns).
+
+### 5) Mercado Pago – falha ao criar link
+
+* Garanta que as **credenciais** (sandbox vs produção) estejam corretas nas configurações salvas no app.
+* Verifique logs das **Edge Functions** no Supabase (funções `mercadopago` e `mercadopago-webhook`).
+
+### 6) PM2 / serviço caiu
+
+```bash
+pm2 status
+pm2 logs foto-formatura --lines 100
+pm2 restart foto-formatura && pm2 save
+```
+
+---
+
+## Notas de segurança
+
+* `.env` **nunca** deve ser versionado.
+* A **anon key** do Supabase é pública, mas ainda assim **trata permissões no RLS** do Supabase corretamente.
+* Mantenha o sistema atualizado (Node, PM2, Nginx) e use HTTPS no domínio.
+
+---
+
+## Roadmap rápido (sugestões)
+
+* Automatizar deploy com GitHub Actions (build + rsync via SSH) opcional.
+* Página de */health* simples servida pelo Nginx para monitoramento.
+* Documentar os schemas/tables principais do Supabase (users, photographers, graduation\_classes, payments, etc.)
+
+---
+
+**Contato/Manutenção**
+
+* Proprietário do repositório: `@valdigley`
+* Branch padrão: `main`
+* Branch de fixes atual: `server-fixes-20250902-2327`
