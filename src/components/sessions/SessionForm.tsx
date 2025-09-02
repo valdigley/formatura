@@ -289,8 +289,26 @@ export const SessionForm: React.FC<SessionFormProps> = ({
                   </label>
                   <input
                     type="datetime-local"
-                    value={formData.session_date ? new Date(formData.session_date).toISOString().slice(0, 16) : ''}
-                    onChange={(e) => handleChange('session_date', e.target.value ? new Date(e.target.value).toISOString() : null)}
+                   value={formData.session_date ? (() => {
+                     const date = new Date(formData.session_date);
+                     // Ajustar para fuso horário de São Paulo (UTC-3)
+                     const saoPauloOffset = -3 * 60; // -3 horas em minutos
+                     const localOffset = date.getTimezoneOffset();
+                     const adjustedDate = new Date(date.getTime() + (localOffset - saoPauloOffset) * 60000);
+                     return adjustedDate.toISOString().slice(0, 16);
+                   })() : ''}
+                   onChange={(e) => {
+                     if (e.target.value) {
+                       // Converter para fuso horário de São Paulo
+                       const inputDate = new Date(e.target.value);
+                       const saoPauloOffset = -3 * 60; // -3 horas em minutos
+                       const localOffset = inputDate.getTimezoneOffset();
+                       const adjustedDate = new Date(inputDate.getTime() - (localOffset - saoPauloOffset) * 60000);
+                       handleChange('session_date', adjustedDate.toISOString());
+                     } else {
+                       handleChange('session_date', null);
+                     }
+                   }}
                     required
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                   />
@@ -437,8 +455,26 @@ export const SessionForm: React.FC<SessionFormProps> = ({
                     </label>
                     <input
                       type="datetime-local"
-                      value={formData.delivery_date ? new Date(formData.delivery_date).toISOString().slice(0, 16) : ''}
-                      onChange={(e) => handleChange('delivery_date', e.target.value ? new Date(e.target.value).toISOString() : null)}
+                     value={formData.delivery_date ? (() => {
+                       const date = new Date(formData.delivery_date);
+                       // Ajustar para fuso horário de São Paulo (UTC-3)
+                       const saoPauloOffset = -3 * 60; // -3 horas em minutos
+                       const localOffset = date.getTimezoneOffset();
+                       const adjustedDate = new Date(date.getTime() + (localOffset - saoPauloOffset) * 60000);
+                       return adjustedDate.toISOString().slice(0, 16);
+                     })() : ''}
+                     onChange={(e) => {
+                       if (e.target.value) {
+                         // Converter para fuso horário de São Paulo
+                         const inputDate = new Date(e.target.value);
+                         const saoPauloOffset = -3 * 60; // -3 horas em minutos
+                         const localOffset = inputDate.getTimezoneOffset();
+                         const adjustedDate = new Date(inputDate.getTime() - (localOffset - saoPauloOffset) * 60000);
+                         handleChange('delivery_date', adjustedDate.toISOString());
+                       } else {
+                         handleChange('delivery_date', null);
+                       }
+                     }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
