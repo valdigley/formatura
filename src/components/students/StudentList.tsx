@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Database } from '../../types/database';
-import { Plus, Search, Filter, Edit, Trash2, Phone, Mail, User, Link, Copy, Check, UserPlus, MessageSquare } from 'lucide-react';
-import { DollarSign } from 'lucide-react';
+import { Plus, Search, Filter, Edit, Trash2, Phone, Mail, User, Link, Copy, Check, UserPlus, MessageSquare, DollarSign, CheckCircle, AlertCircle, Clock } from 'lucide-react';
 import { StudentForm } from './StudentForm';
 
 type Student = Database['public']['Tables']['students']['Row'];
