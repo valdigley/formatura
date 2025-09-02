@@ -59,13 +59,15 @@ export const AuthForm: React.FC = () => {
       
       if (error) {
         console.error('Google auth error:', error);
-        setError('Erro ao fazer login com Google. Tente novamente.');
+        setError(`Erro ao fazer login com Google: ${error.message}`);
+        setGoogleLoading(false);
+      } else {
+        // OAuth redirect will happen, so we don't set loading to false here
+        console.log('Redirecionando para Google...');
       }
-      // Note: For OAuth, the user will be redirected, so we don't need to handle success here
     } catch (err) {
       console.error('Google auth exception:', err);
       setError('Erro inesperado ao fazer login com Google');
-    } finally {
       setGoogleLoading(false);
     }
   };
