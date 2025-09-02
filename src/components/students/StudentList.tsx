@@ -725,3 +725,30 @@ Obrigado pela confiança! 📷✨`;
               )}
               
               {/* Contract and Payment Status */}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Forms */}
+      {showAddForm && (
+        <StudentForm
+          onClose={() => setShowAddForm(false)}
+          onSave={fetchData}
+          graduationClasses={graduationClasses}
+          photoPackages={photoPackages}
+        />
+      )}
+
+      {editingStudent && (
+        <StudentForm
+          student={editingStudent}
+          onClose={() => setEditingStudent(null)}
+          onSave={fetchData}
+          graduationClasses={graduationClasses}
+          photoPackages={photoPackages}
+        />
+      )}
+    </div>
+  );
+};
