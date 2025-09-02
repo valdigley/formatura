@@ -338,6 +338,7 @@ Equipe Fotográfica`;
       await supabase
         .from('payment_transactions')
         .insert([{
+          user_id: user.id,
           student_id: student.id,
           preference_id: responseData.preference?.id,
           external_reference: `student-${student.id}-${Date.now()}`,

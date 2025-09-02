@@ -357,6 +357,7 @@ Deno.serve(async (req: Request) => {
                 .from('payment_transactions')
                 .insert([{
                   user_id: student.user_id,
+                  user_id: student.user_id,
                   student_id: studentId,
                   mercadopago_payment_id: paymentId.toString(),
                   external_reference: paymentDetails.external_reference,
@@ -370,6 +371,7 @@ Deno.serve(async (req: Request) => {
                     currency: paymentDetails.currency_id,
                     installments: paymentDetails.installments,
                     payment_type: paymentDetails.payment_type_id,
+                    transaction_details: paymentDetails.transaction_details,
                     created_from_webhook: true
                   }
                 }]);

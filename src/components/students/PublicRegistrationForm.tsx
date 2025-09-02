@@ -422,7 +422,12 @@ Equipe Fotográfica 📷✨`;
             cpf: studentData.cpf || '12345678909'
           },
           external_reference: `student-${studentData.id || Date.now()}-registration`,
-          notification_url: `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mercadopago-webhook`
+          notification_url: `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mercadopago-webhook`,
+          back_urls: {
+            success: `${window.location.origin}/cadastro-formando?status=success`,
+            failure: `${window.location.origin}/cadastro-formando?status=failure`,
+            pending: `${window.location.origin}/cadastro-formando?status=pending`
+          }
         }),
       });
 
