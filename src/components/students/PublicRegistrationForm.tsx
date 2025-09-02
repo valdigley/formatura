@@ -421,7 +421,7 @@ Equipe Fotográfica 📷✨`;
             },
             cpf: studentData.cpf || '12345678909'
           },
-          external_reference: `student-${Date.now()}-registration`,
+          external_reference: `student-${studentData.id || Date.now()}-registration`,
           notification_url: `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mercadopago-webhook`
         }),
       });
@@ -604,6 +604,7 @@ Obrigado! 📷✨`;
         const contract = await generateContract(
           { 
             ...formData, 
+            id: newStudent.id,
             phone: cleanPhone, 
             cpf: cleanCpf,
             city: formData.city,
@@ -616,7 +617,7 @@ Obrigado! 📷✨`;
 
         if (contract) {
           const contractResult = await sendContractViaWhatsApp(
-            { ...formData, phone: cleanPhone },
+            { ...formData, id: newStudent.id, phone: cleanPhone },
             contract
           );
           
@@ -636,7 +637,7 @@ Obrigado! 📷✨`;
           
           // Send payment request after contract
           const paymentResult = await sendPaymentRequest(
-            { ...formData, phone: cleanPhone },
+            { ...formData, id: newStudent.id, phone: cleanPhone },
             packageData,
             paymentSelection,
             graduationClass
