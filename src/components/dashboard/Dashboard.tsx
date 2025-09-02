@@ -200,9 +200,6 @@ export const Dashboard: React.FC = () => {
           paymentStatus: s.notes?.includes('=== ENVIO DE PAGAMENTO ===') 
             ? (s.notes.includes('ENVIADO COM SUCESSO') ? 'sent_success' : 'sent_failed')
             : 'not_sent'
-          contractStatus: s.notes?.includes('=== ENVIO DE CONTRATO ===') 
-            ? (s.notes.includes('ENVIADO COM SUCESSO') ? 'sent_success' : 'sent_failed')
-            : 'unknown'
         }));
 
       const recentClasses = classes
