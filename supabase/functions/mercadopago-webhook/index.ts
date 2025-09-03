@@ -120,11 +120,8 @@ Deno.serve(async (req: Request) => {
 
     // Find existing transaction in database
     let transaction = null;
+    let searchMethod = '';
     
-    // Method 1: Search by external_reference
-    if (paymentDetails.external_reference) {
-      console.log('🔍 Buscando transação por external_reference:', paymentDetails.external_reference);
-    }
     // Method 1: Search by mercadopago_payment_id (if already exists)
     console.log('🔍 Buscando transação por mercadopago_payment_id:', paymentId);
     const { data: transactionById } = await supabase
@@ -404,7 +401,12 @@ Obrigado pela confiança! Mal podemos esperar para capturar seus melhores moment
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
       );
       
-      const requestBody = await req.text();
+      let requestBody = '';
+      try {
+        requestBody = await req.text();
+      } catch (e) {
+        requestBody = 'Could not read request body';
+      }
       
       await supabase.from('webhook_logs').insert({
         event_type: 'mercadopago_webhook',
