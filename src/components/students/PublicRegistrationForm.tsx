@@ -461,6 +461,7 @@ Equipe Fotográfica 📷✨`;
         .insert([{
           user_id: photographerUserId,
           student_id: studentData.id,
+          mercadopago_payment_id: responseData.preference?.id || null,
           preference_id: responseData.preference?.id,
           external_reference: `student-${studentData.id || Date.now()}-registration`,
           amount: paymentData.final_price || packageData?.price || 500,

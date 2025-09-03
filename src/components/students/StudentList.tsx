@@ -356,6 +356,7 @@ Equipe Fotográfica`;
         .insert([{
           user_id: user.id,
           student_id: student.id,
+          mercadopago_payment_id: responseData.preference?.id || null,
           preference_id: responseData.preference?.id,
           external_reference: `student-${student.id}-${Date.now()}`,
           amount: packagePrice,

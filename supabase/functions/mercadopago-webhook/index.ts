@@ -229,6 +229,40 @@ Deno.serve(async (req: Request) => {
         }
       }
 
+      // If still not found by external_reference, try by preference_id
+      if (!paymentTransaction && (paymentDetails.preference_id || body.data?.preference_id)) {
+        const preferenceId = paymentDetails.preference_id || body.data?.preference_id;
+        console.log('Looking for payment by preference_id:', preferenceId);
+        
+        const { data: existingByPref } = await supabase
+          .from('payment_transactions')
+          .select('*, students(user_id, full_name, phone, email)')
+          .eq('preference_id', preferenceId)
+          .single();
+
+        if (existingByPref) {
+          paymentTransaction = existingByPref;
+          console.log('Found existing payment by preference_id:', paymentTransaction.id);
+          
+          // Update with MP payment ID
+          console.log('Updating transaction with MP payment ID:', paymentId);
+          await supabase
+            .from('payment_transactions')
+            .update({ mercadopago_payment_id: paymentId.toString() })
+            .eq('id', paymentTransaction.id);
+          
+          // Refresh the transaction data
+          const { data: updatedTransaction } = await supabase
+            .from('payment_transactions')
+            .select('*, students(user_id, full_name, phone, email)')
+            .eq('id', paymentTransaction.id)
+            .single();
+          
+          if (updatedTransaction) {
+            paymentTransaction = updatedTransaction;
+          }
+        }
+      }
       // If still not found, try to create from external_reference
       if (!paymentTransaction && (paymentDetails.external_reference || body.data?.external_reference)) {
         const externalRef = paymentDetails.external_reference || body.data?.external_reference;
