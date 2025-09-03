@@ -6,38 +6,6 @@ const corsHeaders = {
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
-// Função para buscar detalhes do pagamento no Mercado Pago
-async function fetchPaymentDetails(paymentId: string, accessToken: string) {
-  try {
-    console.log(`🔍 Buscando detalhes do pagamento ${paymentId}`);
-    
-    const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      console.log(`✅ Detalhes do pagamento encontrados:`, {
-        id: data.id,
-        status: data.status,
-        external_reference: data.external_reference,
-        preference_id: data.additional_info?.external_reference || data.external_reference
-      });
-      return data;
-    } else {
-      console.error(`❌ Erro ao buscar pagamento ${paymentId}:`, response.status);
-      return null;
-    }
-  } catch (error) {
-    console.error(`❌ Erro ao buscar pagamento ${paymentId}:`, error);
-    return null;
-  }
-}
-
 Deno.serve(async (req: Request) => {
   try {
     // Handle CORS preflight
@@ -52,18 +20,6 @@ Deno.serve(async (req: Request) => {
     const webhookData = await req.json();
     console.log('🔔 Webhook recebido:', JSON.stringify(webhookData, null, 2));
 
-    // Validate webhook structure
-    if (!webhookData.data?.id) {
-      console.error('❌ Webhook inválido: ID do pagamento não encontrado');
-      return new Response(JSON.stringify({ error: 'Invalid webhook data' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    const paymentId = webhookData.data.id.toString();
-    console.log('💳 Processando payment ID:', paymentId);
-
     // Initialize Supabase client
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -72,12 +28,34 @@ Deno.serve(async (req: Request) => {
 
     // Log webhook for debugging
     await supabase.from('webhook_logs').insert({
-      event_type: 'mercadopago_payment',
+      event_type: 'mercadopago_webhook',
       payload: webhookData,
-      status: 'success',
+      status: 'received',
     });
 
-    // Get all MercadoPago configurations
+    // Validate webhook structure according to MP docs
+    if (!webhookData.data?.id) {
+      console.error('❌ Webhook inválido: data.id não encontrado');
+      return new Response(JSON.stringify({ error: 'Invalid webhook: missing data.id' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Extract payment ID
+    const paymentId = webhookData.data.id.toString();
+    console.log('💳 Processando payment ID:', paymentId);
+
+    // Only process payment events
+    if (webhookData.type !== 'payment') {
+      console.log('ℹ️ Evento ignorado, não é do tipo payment:', webhookData.type);
+      return new Response(JSON.stringify({ message: 'Event ignored, not a payment' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Get all MercadoPago configurations to find the right access token
     const { data: userSettings } = await supabase
       .from('user_settings')
       .select('user_id, settings')
@@ -85,7 +63,7 @@ Deno.serve(async (req: Request) => {
 
     if (!userSettings || userSettings.length === 0) {
       console.error('❌ Nenhuma configuração do MercadoPago encontrada');
-      return new Response(JSON.stringify({ error: 'No configurations found' }), {
+      return new Response(JSON.stringify({ error: 'No MercadoPago configurations found' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -99,38 +77,53 @@ Deno.serve(async (req: Request) => {
       const mpConfig = userSetting.settings?.mercadopago;
       if (!mpConfig?.access_token) continue;
 
-      console.log(`🔍 Tentando access token do usuário: ${userSetting.user_id}`);
+      console.log(`🔍 Tentando buscar pagamento com access token do usuário: ${userSetting.user_id}`);
       
-      paymentDetails = await fetchPaymentDetails(paymentId, mpConfig.access_token);
-      if (paymentDetails) {
-        matchedUserId = userSetting.user_id;
-        console.log('✅ Pagamento encontrado com este access token');
-        break;
+      try {
+        const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${mpConfig.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (response.ok) {
+          paymentDetails = await response.json();
+          matchedUserId = userSetting.user_id;
+          console.log('✅ Pagamento encontrado:', {
+            id: paymentDetails.id,
+            status: paymentDetails.status,
+            external_reference: paymentDetails.external_reference,
+            amount: paymentDetails.transaction_amount,
+            payer_email: paymentDetails.payer?.email
+          });
+          break;
+        } else {
+          console.log(`❌ Pagamento não encontrado com este access token (${response.status})`);
+        }
+      } catch (error) {
+        console.error(`❌ Erro ao buscar pagamento:`, error);
       }
     }
 
     if (!paymentDetails) {
-      console.error('❌ Pagamento não encontrado em nenhuma conta');
-      return new Response(JSON.stringify({ error: 'Payment not found in any account' }), {
+      console.error('❌ Pagamento não encontrado em nenhuma conta configurada');
+      return new Response(JSON.stringify({ 
+        error: 'Payment not found in any configured account',
+        payment_id: paymentId 
+      }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    console.log('💰 Detalhes do pagamento:', {
-      id: paymentDetails.id,
-      status: paymentDetails.status,
-      amount: paymentDetails.transaction_amount,
-      external_reference: paymentDetails.external_reference,
-      payer_email: paymentDetails.payer?.email
-    });
-
-    // Find transaction by multiple methods
+    // Find existing transaction in database
     let transaction = null;
     
-    // Method 1: Try by external_reference
+    // Method 1: Search by external_reference
     if (paymentDetails.external_reference) {
-      console.log('🔍 Buscando por external_reference:', paymentDetails.external_reference);
+      console.log('🔍 Buscando transação por external_reference:', paymentDetails.external_reference);
       
       const { data: transactionByRef } = await supabase
         .from('payment_transactions')
@@ -144,13 +137,14 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Method 2: Try by preference_id (if external_reference didn't work)
+    // Method 2: Search by preference_id (extracted from external_reference or other fields)
     if (!transaction) {
-      // Extract preference ID from external_reference or other fields
-      const preferenceId = paymentDetails.external_reference;
+      // Try to extract preference_id from the payment details
+      const preferenceId = paymentDetails.additional_info?.external_reference || 
+                          paymentDetails.external_reference;
       
       if (preferenceId) {
-        console.log('🔍 Buscando por preference_id:', preferenceId);
+        console.log('🔍 Buscando transação por preference_id:', preferenceId);
         
         const { data: transactionByPref } = await supabase
           .from('payment_transactions')
@@ -165,9 +159,9 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Method 3: Try by amount and payer email (last resort)
+    // Method 3: Search by payer email and amount (last resort)
     if (!transaction && paymentDetails.payer?.email) {
-      console.log('🔍 Buscando por email e valor:', paymentDetails.payer.email, paymentDetails.transaction_amount);
+      console.log('🔍 Buscando transação por email e valor:', paymentDetails.payer.email, paymentDetails.transaction_amount);
       
       const { data: transactionByEmail } = await supabase
         .from('payment_transactions')
@@ -187,31 +181,65 @@ Deno.serve(async (req: Request) => {
 
     if (!transaction) {
       console.error('❌ Transação não encontrada no banco de dados');
-      console.log('🔍 Dados para busca:', {
+      console.log('🔍 Dados disponíveis para busca:', {
         external_reference: paymentDetails.external_reference,
         payer_email: paymentDetails.payer?.email,
-        amount: paymentDetails.transaction_amount
+        amount: paymentDetails.transaction_amount,
+        preference_id: paymentDetails.additional_info?.external_reference
       });
       
-      return new Response(JSON.stringify({ 
-        error: 'Transaction not found',
-        payment_id: paymentId,
-        external_reference: paymentDetails.external_reference,
-        payer_email: paymentDetails.payer?.email
-      }), {
-        status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+      // Create new transaction if payment is approved and we have enough data
+      if (paymentDetails.status === 'approved' && paymentDetails.payer?.email) {
+        console.log('💡 Criando nova transação para pagamento aprovado');
+        
+        const { data: newTransaction, error: createError } = await supabase
+          .from('payment_transactions')
+          .insert([{
+            user_id: matchedUserId,
+            mercadopago_payment_id: paymentId,
+            external_reference: paymentDetails.external_reference || `payment-${paymentId}`,
+            amount: paymentDetails.transaction_amount,
+            status: paymentDetails.status,
+            payment_method: paymentDetails.payment_method_id || paymentDetails.payment_type_id,
+            payment_date: paymentDetails.date_approved,
+            payer_email: paymentDetails.payer.email,
+            webhook_data: paymentDetails,
+            metadata: {
+              created_by_webhook: true,
+              payment_id: paymentId
+            }
+          }])
+          .select('*, students(full_name, email, phone)')
+          .single();
 
-    console.log('📋 Transação encontrada:', transaction.id);
+        if (createError) {
+          console.error('❌ Erro ao criar nova transação:', createError);
+          return new Response(JSON.stringify({ error: 'Failed to create transaction', details: createError }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        
+        transaction = newTransaction;
+        console.log('✅ Nova transação criada:', transaction.id);
+      } else {
+        return new Response(JSON.stringify({ 
+          error: 'Transaction not found and cannot create new one',
+          payment_id: paymentId,
+          status: paymentDetails.status,
+          payer_email: paymentDetails.payer?.email
+        }), {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
 
     // Update transaction with payment details
     const updateData = {
       mercadopago_payment_id: paymentId,
       status: paymentDetails.status,
       payment_method: paymentDetails.payment_method_id || paymentDetails.payment_type_id,
-      payer_email: paymentDetails.payer?.email || transaction.payer_email,
       webhook_data: paymentDetails,
     };
 
@@ -220,7 +248,7 @@ Deno.serve(async (req: Request) => {
       updateData.payment_date = paymentDetails.date_approved;
     }
 
-    console.log('📝 Atualizando transação com:', updateData);
+    console.log('📝 Atualizando transação:', transaction.id, 'com status:', paymentDetails.status);
 
     const { error: updateError } = await supabase
       .from('payment_transactions')
@@ -239,7 +267,7 @@ Deno.serve(async (req: Request) => {
 
     // Send WhatsApp confirmation if payment is approved
     if (paymentDetails.status === 'approved' && transaction.students) {
-      console.log('📱 Enviando confirmação via WhatsApp...');
+      console.log('📱 Enviando confirmação via WhatsApp para:', transaction.students.full_name);
       
       try {
         // Get WhatsApp config for the user
@@ -266,9 +294,13 @@ Deno.serve(async (req: Request) => {
               variations.push(`55${clean}`);
             } else if (clean.length === 11) {
               variations.push(`55${clean}`);
+              if (clean.charAt(2) === '9') {
+                const without9 = clean.substring(0, 2) + clean.substring(3);
+                variations.push(`55${without9}`);
+              }
             }
             
-            return variations;
+            return [...new Set(variations)];
           };
           
           const phoneVariations = normalizePhone(transaction.students.phone);
@@ -298,8 +330,11 @@ Olá ${transaction.students.full_name}!
 Obrigado pela confiança! Mal podemos esperar para capturar seus melhores momentos! 📷✨`;
 
           // Try to send to each phone variation
+          let messageSent = false;
           for (const phoneNumber of phoneVariations) {
             try {
+              console.log(`📱 Tentando enviar confirmação para: ${phoneNumber}`);
+              
               const response = await fetch(`${whatsappConfig.api_url}/message/sendText/${whatsappConfig.instance_name}`, {
                 method: 'POST',
                 headers: {
@@ -314,11 +349,18 @@ Obrigado pela confiança! Mal podemos esperar para capturar seus melhores moment
 
               if (response.ok) {
                 console.log(`✅ Confirmação enviada via WhatsApp para: ${phoneNumber}`);
+                messageSent = true;
                 break;
+              } else {
+                console.log(`❌ Falha ao enviar para ${phoneNumber}`);
               }
             } catch (error) {
               console.error(`❌ Erro ao enviar WhatsApp para ${phoneNumber}:`, error);
             }
+          }
+          
+          if (!messageSent) {
+            console.log('⚠️ Não foi possível enviar confirmação via WhatsApp');
           }
         } else {
           console.log('⚠️ WhatsApp não configurado, pulando notificação');
@@ -328,11 +370,27 @@ Obrigado pela confiança! Mal podemos esperar para capturar seus melhores moment
       }
     }
 
+    // Log successful processing
+    await supabase.from('webhook_logs').insert({
+      event_type: 'mercadopago_webhook',
+      payload: webhookData,
+      response: {
+        transaction_id: transaction.id,
+        payment_id: paymentId,
+        status: paymentDetails.status,
+        updated: true
+      },
+      status: 'success',
+    });
+
+    console.log('🎉 Webhook processado com sucesso!');
+
     return new Response(JSON.stringify({ 
       success: true, 
       payment_id: paymentId,
       transaction_id: transaction.id,
-      status: paymentDetails.status
+      status: paymentDetails.status,
+      message: 'Payment processed successfully'
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -351,7 +409,7 @@ Obrigado pela confiança! Mal podemos esperar para capturar seus melhores moment
       const requestBody = await req.text();
       
       await supabase.from('webhook_logs').insert({
-        event_type: 'mercadopago_payment',
+        event_type: 'mercadopago_webhook',
         payload: { error: 'Failed to parse', raw: requestBody },
         response: { error: error.message },
         status: 'failed',
@@ -360,7 +418,10 @@ Obrigado pela confiança! Mal podemos esperar para capturar seus melhores moment
       console.error('❌ Falha ao registrar erro:', logError);
     }
 
-    return new Response(JSON.stringify({ error: 'Internal server error', details: error.message }), {
+    return new Response(JSON.stringify({ 
+      error: 'Internal server error', 
+      details: error.message 
+    }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
