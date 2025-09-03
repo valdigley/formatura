@@ -107,7 +107,10 @@ Deno.serve(async (req: Request) => {
       const paymentId = body.data?.id || body.id;
       const action = body.action || body.type;
 
-      console.log('Processing payment webhook:', { paymentId, action });
+      console.log('=== PROCESSING PAYMENT WEBHOOK ===');
+      console.log('Payment ID:', paymentId);
+      console.log('Action:', action);
+      console.log('Full webhook data:', JSON.stringify(body, null, 2));
 
       if (!paymentId) {
         console.log('No payment ID found in webhook');
@@ -120,116 +123,208 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      // Get payment details from MercadoPago API
-      console.log('Fetching payment details from MercadoPago API...');
-      
-      // First, try to find any existing transaction to get access token
-      const { data: anyTransaction } = await supabase
-        .from('payment_transactions')
-        .select('*, students(user_id)')
-        .limit(1)
-        .single();
-      
-      let paymentDetails = null;
-      
-      if (anyTransaction?.students?.user_id) {
-        const { data: settings } = await supabase
-          .from('user_settings')
-          .select('settings')
-          .eq('user_id', anyTransaction.students.user_id)
-          .single();
-
-        const mercadoPagoConfig = settings?.settings?.mercadopago;
-        if (mercadoPagoConfig?.access_token) {
-          try {
-            console.log(`Fetching payment ${paymentId} from MP API...`);
-            const mpResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-              headers: {
-                'Authorization': `Bearer ${mercadoPagoConfig.access_token}`,
-                'Content-Type': 'application/json',
-              },
-            });
-
-            if (mpResponse.ok) {
-              paymentDetails = await mpResponse.json();
-              console.log('✅ Payment details fetched from MP API');
-              console.log('Payment status:', paymentDetails.status);
-              console.log('External reference:', paymentDetails.external_reference);
-              console.log('Amount:', paymentDetails.transaction_amount);
-            } else {
-              console.error('❌ Failed to fetch from MP API:', mpResponse.status);
-              const errorData = await mpResponse.json();
-              console.error('MP API Error:', errorData);
-            }
-          } catch (error) {
-            console.error('❌ Error fetching from MP API:', error);
-          }
-        } else {
-          console.log('⚠️ No MercadoPago access token found');
-        }
-      } else {
-        console.log('⚠️ No existing transactions found to get access token');
-      }
-      
-      // If we couldn't fetch from API, use webhook data
-      if (!paymentDetails) {
-        console.log('Using webhook data as fallback');
-        paymentDetails = body.data || body;
-      }
+      // Use webhook data directly (more reliable)
+      const paymentDetails = body.data || body;
+      console.log('Payment details from webhook:', {
+        id: paymentDetails.id,
+        status: paymentDetails.status,
+        external_reference: paymentDetails.external_reference,
+        amount: paymentDetails.transaction_amount,
+        preference_id: paymentDetails.preference_id
+      });
 
       // Find or create payment transaction
       let paymentTransaction = null;
       
-      // First try to find by mercadopago_payment_id
-      const { data: existingByMpId } = await supabase
-        .from('payment_transactions')
-        .select('*, students(user_id, full_name, phone, email)')
-        .eq('mercadopago_payment_id', paymentId.toString())
-        .single();
+      console.log('=== SEARCHING FOR EXISTING TRANSACTION ===');
+      
+      // Try to find by preference_id first (most reliable)
+      if (paymentDetails.preference_id) {
+        console.log('Searching by preference_id:', paymentDetails.preference_id);
+        const { data: existingByPref } = await supabase
+          .from('payment_transactions')
+          .select('*, students(user_id, full_name, phone, email)')
+          .eq('preference_id', paymentDetails.preference_id)
+          .single();
 
-      if (existingByMpId) {
-        paymentTransaction = existingByMpId;
-        console.log('Found existing payment by MP ID:', paymentTransaction.id);
+        if (existingByPref) {
+          paymentTransaction = existingByPref;
+          console.log('✅ Found transaction by preference_id:', paymentTransaction.id);
+        }
       }
+      
+      // If not found by preference_id, try by mercadopago_payment_id
+      if (!paymentTransaction) {
+        console.log('Searching by mercadopago_payment_id:', paymentId);
+        const { data: existingByMpId } = await supabase
+          .from('payment_transactions')
+          .select('*, students(user_id, full_name, phone, email)')
+          .eq('mercadopago_payment_id', paymentId.toString())
+          .single();
 
-      // If not found by MP ID, try by external_reference
-      if (!paymentTransaction && (paymentDetails.external_reference || body.data?.external_reference)) {
-        const externalRef = paymentDetails.external_reference || body.data?.external_reference;
-        console.log('Looking for payment by external_reference:', externalRef);
-        
+        if (existingByMpId) {
+          paymentTransaction = existingByMpId;
+          console.log('✅ Found transaction by mercadopago_payment_id:', paymentTransaction.id);
+        }
+      }
+      
+      // If not found, try by external_reference
+      if (!paymentTransaction && paymentDetails.external_reference) {
+        console.log('Searching by external_reference:', paymentDetails.external_reference);
         const { data: existingByRef } = await supabase
           .from('payment_transactions')
           .select('*, students(user_id, full_name, phone, email)')
-          .eq('external_reference', externalRef)
+          .eq('external_reference', paymentDetails.external_reference)
           .single();
 
         if (existingByRef) {
           paymentTransaction = existingByRef;
-          console.log('Found existing payment by external_reference:', paymentTransaction.id);
+          console.log('✅ Found transaction by external_reference:', paymentTransaction.id);
+        }
+      }
+      
+      if (!paymentTransaction) {
+        console.log('❌ No transaction found for payment:', {
+          payment_id: paymentId,
+          preference_id: paymentDetails.preference_id,
+          external_reference: paymentDetails.external_reference
+        });
+        
+        // Log for manual investigation
+        await supabase
+          .from('webhook_logs')
+          .insert([{
+            event_type: `orphan_payment_${action}`,
+            payload: { ...body, payment_details: paymentDetails },
+            response: { 
+              error: 'Payment transaction not found', 
+              payment_id: paymentId,
+              preference_id: paymentDetails.preference_id,
+              external_reference: paymentDetails.external_reference,
+              amount: paymentDetails.transaction_amount,
+              status: paymentDetails.status,
+              payer_email: paymentDetails.payer?.email
+            },
+            status: 'failed'
+          }]);
           
-          // Update with MP payment ID if missing
-          if (!paymentTransaction.mercadopago_payment_id) {
-            console.log('Updating transaction with MP payment ID:', paymentId);
-            await supabase
-              .from('payment_transactions')
-              .update({ mercadopago_payment_id: paymentId.toString() })
-              .eq('id', paymentTransaction.id);
-            
-            // Refresh the transaction data
-            const { data: updatedTransaction } = await supabase
-              .from('payment_transactions')
-              .select('*, students(user_id, full_name, phone, email)')
-              .eq('id', paymentTransaction.id)
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            message: 'Payment transaction not found',
+            payment_id: paymentId,
+            preference_id: paymentDetails.preference_id,
+            external_reference: paymentDetails.external_reference
+          }),
+          {
+            status: 404,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          }
+        );
+      }
+      
+      // Update the transaction
+      console.log('=== UPDATING TRANSACTION ===');
+      console.log('Transaction ID:', paymentTransaction.id);
+      console.log('Current status:', paymentTransaction.status);
+      console.log('New status:', paymentDetails.status);
+      
+      const wasNotApproved = paymentTransaction.status !== 'approved';
+      const isNowApproved = paymentDetails.status === 'approved';
+      
+      const updateData = {
+        mercadopago_payment_id: paymentId.toString(),
+        status: paymentDetails.status || paymentTransaction.status,
+        payment_method: paymentDetails.payment_method_id || paymentDetails.payment_method || paymentTransaction.payment_method,
+        amount: paymentDetails.transaction_amount || paymentDetails.amount || paymentTransaction.amount,
+        payment_date: paymentDetails.date_approved ? new Date(paymentDetails.date_approved).toISOString() : null,
+        payer_email: paymentDetails.payer?.email || paymentTransaction.payer_email,
+        webhook_data: paymentDetails,
+        metadata: {
+          ...paymentTransaction.metadata,
+          currency: paymentDetails.currency_id,
+          installments: paymentDetails.installments,
+          payment_type: paymentDetails.payment_type_id,
+          transaction_details: paymentDetails.transaction_details,
+          date_approved: paymentDetails.date_approved,
+          date_created: paymentDetails.date_created,
+          last_webhook_update: new Date().toISOString(),
+          webhook_action: action,
+          fee_details: paymentDetails.fee_details
+        },
+        updated_at: new Date().toISOString()
+      };
+
+      console.log('Updating with data:', updateData);
+      
+      const { error: updateError } = await supabase
+        .from('payment_transactions')
+        .update(updateData)
+        .eq('id', paymentTransaction.id);
+
+      if (updateError) {
+        console.error('Error updating payment transaction:', updateError);
+        
+        // Log the error for debugging
+        await supabase
+          .from('webhook_logs')
+          .insert([{
+            event_type: `update_error_${action}`,
+            payload: { ...body, update_data: updateData },
+            response: { error: updateError.message },
+            status: 'failed'
+          }]);
+      } else {
+        console.log('✅ Successfully updated payment transaction');
+        console.log('Updated status to:', paymentDetails.status);
+        console.log('Saved mercadopago_payment_id:', paymentId);
+
+        // Send confirmation message if payment was just approved
+        if (wasNotApproved && isNowApproved && paymentTransaction.students) {
+          console.log('🎉 Payment was just approved, sending confirmation message');
+          
+          try {
+            // Get WhatsApp configuration for the photographer
+            const { data: settings, error: settingsError } = await supabase
+              .from('user_settings')
+              .select('settings')
+              .eq('user_id', paymentTransaction.students.user_id)
               .single();
-            
-            if (updatedTransaction) {
-              paymentTransaction = updatedTransaction;
+
+            if (settingsError) {
+              console.error('Error fetching WhatsApp settings:', settingsError);
+            } else {
+              const whatsappConfig = settings?.settings?.whatsapp;
+              
+              if (whatsappConfig?.is_connected) {
+                console.log('📱 WhatsApp is connected, sending confirmation');
+                
+                const confirmationSent = await sendPaymentConfirmation(
+                  paymentTransaction.students,
+                  {
+                    amount: paymentDetails.transaction_amount || paymentDetails.amount || paymentTransaction.amount,
+                    payment_method: paymentDetails.payment_method_id || paymentDetails.payment_method || paymentTransaction.payment_method,
+                    mercadopago_payment_id: paymentId
+                  },
+                  whatsappConfig
+                );
+                
+                if (confirmationSent) {
+                  console.log('✅ Payment confirmation sent via WhatsApp successfully');
+                } else {
+                  console.error('❌ Failed to send payment confirmation via WhatsApp');
+                }
+              } else {
+                console.log('⚠️ WhatsApp not configured or not connected');
+              }
             }
+          } catch (confirmationError) {
+            console.error('Error in confirmation process:', confirmationError);
           }
         }
       }
 
-      // If still not found by external_reference, try by preference_id
+      // If not found by external_reference, try by preference_id
       if (!paymentTransaction && (paymentDetails.preference_id || body.data?.preference_id)) {
         const preferenceId = paymentDetails.preference_id || body.data?.preference_id;
         console.log('Looking for payment by preference_id:', preferenceId);
@@ -320,114 +415,6 @@ Deno.serve(async (req: Request) => {
             }
           }
         }
-      }
-
-      // Update existing payment transaction
-      if (paymentTransaction) {
-        console.log('Updating payment transaction:', paymentTransaction.id);
-        console.log('Current status:', paymentTransaction.status);
-        console.log('New status from MP:', paymentDetails.status);
-        
-        const wasNotApproved = paymentTransaction.status !== 'approved';
-        const isNowApproved = paymentDetails.status === 'approved';
-        
-        const updateData = {
-          status: paymentDetails.status || paymentTransaction.status,
-          payment_method: paymentDetails.payment_method_id || paymentDetails.payment_method || paymentTransaction.payment_method,
-          amount: paymentDetails.transaction_amount || paymentDetails.amount || paymentTransaction.amount,
-          payer_email: paymentDetails.payer?.email || paymentTransaction.payer_email,
-          webhook_data: paymentDetails,
-          metadata: {
-            ...paymentTransaction.metadata,
-            currency: paymentDetails.currency_id,
-            installments: paymentDetails.installments,
-            payment_type: paymentDetails.payment_type_id,
-            transaction_details: paymentDetails.transaction_details,
-            date_approved: paymentDetails.date_approved,
-            date_created: paymentDetails.date_created,
-            last_webhook_update: new Date().toISOString(),
-            webhook_action: action,
-            fee_details: paymentDetails.fee_details
-          },
-          updated_at: new Date().toISOString()
-        };
-
-        const { error: updateError } = await supabase
-          .from('payment_transactions')
-          .update(updateData)
-          .eq('id', paymentTransaction.id);
-
-        if (updateError) {
-          console.error('Error updating payment transaction:', updateError);
-        } else {
-          console.log('✅ Successfully updated payment transaction');
-          console.log('Updated status to:', paymentDetails.status);
-
-          // Send confirmation message if payment was just approved
-          if (wasNotApproved && isNowApproved && paymentTransaction.students) {
-            console.log('🎉 Payment was just approved, sending confirmation message');
-            
-            try {
-              // Get WhatsApp configuration for the photographer
-              const { data: settings, error: settingsError } = await supabase
-                .from('user_settings')
-                .select('settings')
-                .eq('user_id', paymentTransaction.students.user_id)
-                .single();
-
-              if (settingsError) {
-                console.error('Error fetching WhatsApp settings:', settingsError);
-              } else {
-                const whatsappConfig = settings?.settings?.whatsapp;
-                
-                if (whatsappConfig?.is_connected) {
-                  console.log('📱 WhatsApp is connected, sending confirmation');
-                  
-                  const confirmationSent = await sendPaymentConfirmation(
-                    paymentTransaction.students,
-                    {
-                      amount: paymentDetails.transaction_amount || paymentDetails.amount || paymentTransaction.amount,
-                      payment_method: paymentDetails.payment_method_id || paymentDetails.payment_method || paymentTransaction.payment_method,
-                      mercadopago_payment_id: paymentId
-                    },
-                    whatsappConfig
-                  );
-                  
-                  if (confirmationSent) {
-                    console.log('✅ Payment confirmation sent via WhatsApp successfully');
-                  } else {
-                    console.error('❌ Failed to send payment confirmation via WhatsApp');
-                  }
-                } else {
-                  console.log('⚠️ WhatsApp not configured or not connected');
-                }
-              }
-            } catch (confirmationError) {
-              console.error('Error in confirmation process:', confirmationError);
-            }
-          }
-        }
-      } else {
-        console.log('❌ Payment transaction not found for payment ID:', paymentId);
-        console.log('External reference from MP:', paymentDetails.external_reference);
-        console.log('This might be a test webhook or payment without proper external_reference');
-        
-        // Log the webhook for manual processing later
-        await supabase
-          .from('webhook_logs')
-          .insert([{
-            event_type: `unprocessed_payment_${action}`,
-            payload: { ...body, payment_details: paymentDetails },
-            response: { 
-              error: 'Payment transaction not found', 
-              payment_id: paymentId,
-              external_reference: paymentDetails.external_reference,
-              amount: paymentDetails.transaction_amount,
-              status: paymentDetails.status,
-              payer_email: paymentDetails.payer?.email
-            },
-            status: 'failed'
-          }]);
       }
 
     } else {
