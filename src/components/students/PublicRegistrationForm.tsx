@@ -455,6 +455,36 @@ Equipe Fotográfica 📷✨`;
 
       const paymentLink = responseData.payment_link;
       
+      // Save payment transaction to database immediately
+      const { data: newTransaction, error: transactionError } = await supabase
+        .from('payment_transactions')
+        .insert([{
+          user_id: photographerUserId,
+          student_id: studentData.id,
+          preference_id: responseData.preference?.id,
+          external_reference: `student-${studentData.id || Date.now()}-registration`,
+          amount: paymentData.final_price || packageData?.price || 500,
+          status: 'pending',
+          payer_email: studentData.email,
+          metadata: {
+            package_name: packageData?.name || 'Pacote Fotográfico',
+            student_name: studentData.full_name,
+            graduation_class: graduationClass?.name,
+            payment_method_selected: paymentData.payment_method,
+            installments: paymentData.installments,
+            discount: paymentData.discount
+          }
+        }])
+        .select()
+        .single();
+
+      if (transactionError) {
+        console.error('Error creating payment transaction:', transactionError);
+        throw new Error('Erro ao registrar transação de pagamento');
+      }
+
+      console.log('Payment transaction created for registration:', newTransaction?.id);
+      
       // Get WhatsApp config
       const whatsappConfig = settings.settings.whatsapp;
       if (!whatsappConfig?.is_connected) {

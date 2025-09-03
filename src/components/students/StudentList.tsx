@@ -350,8 +350,8 @@ Equipe Fotográfica`;
 
       const paymentLink = responseData.payment_link;
       
-      // Save payment transaction to database
-      await supabase
+      // Save payment transaction to database immediately
+      const { data: newTransaction, error: transactionError } = await supabase
         .from('payment_transactions')
         .insert([{
           user_id: user.id,
@@ -366,7 +366,16 @@ Equipe Fotográfica`;
             student_name: student.full_name,
             graduation_class: graduationClass?.name
           }
-        }]);
+        }])
+        .select()
+        .single();
+
+      if (transactionError) {
+        console.error('Error creating payment transaction:', transactionError);
+        throw new Error('Erro ao registrar transação de pagamento');
+      }
+
+      console.log('Payment transaction created:', newTransaction?.id);
       
       // Função para normalizar e tentar diferentes formatos de telefone
       const normalizePhone = (phone: string) => {

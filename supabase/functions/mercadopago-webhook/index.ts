@@ -209,10 +209,22 @@ Deno.serve(async (req: Request) => {
           
           // Update with MP payment ID if missing
           if (!paymentTransaction.mercadopago_payment_id) {
+            console.log('Updating transaction with MP payment ID:', paymentId);
             await supabase
               .from('payment_transactions')
               .update({ mercadopago_payment_id: paymentId.toString() })
               .eq('id', paymentTransaction.id);
+            
+            // Refresh the transaction data
+            const { data: updatedTransaction } = await supabase
+              .from('payment_transactions')
+              .select('*, students(user_id, full_name, phone, email)')
+              .eq('id', paymentTransaction.id)
+              .single();
+            
+            if (updatedTransaction) {
+              paymentTransaction = updatedTransaction;
+            }
           }
         }
       }
@@ -279,6 +291,8 @@ Deno.serve(async (req: Request) => {
       // Update existing payment transaction
       if (paymentTransaction) {
         console.log('Updating payment transaction:', paymentTransaction.id);
+        console.log('Current status:', paymentTransaction.status);
+        console.log('New status from MP:', paymentDetails.status);
         
         const wasNotApproved = paymentTransaction.status !== 'approved';
         const isNowApproved = paymentDetails.status === 'approved';
@@ -286,7 +300,6 @@ Deno.serve(async (req: Request) => {
         const updateData = {
           status: paymentDetails.status || paymentTransaction.status,
           payment_method: paymentDetails.payment_method_id || paymentDetails.payment_method || paymentTransaction.payment_method,
-          payment_date: paymentDetails.date_approved ? new Date(paymentDetails.date_approved).toISOString() : paymentTransaction.payment_date,
           amount: paymentDetails.transaction_amount || paymentDetails.amount || paymentTransaction.amount,
           payer_email: paymentDetails.payer?.email || paymentTransaction.payer_email,
           webhook_data: paymentDetails,
@@ -296,6 +309,8 @@ Deno.serve(async (req: Request) => {
             installments: paymentDetails.installments,
             payment_type: paymentDetails.payment_type_id,
             transaction_details: paymentDetails.transaction_details,
+            date_approved: paymentDetails.date_approved,
+            date_created: paymentDetails.date_created,
             last_webhook_update: new Date().toISOString(),
             webhook_action: action,
             fee_details: paymentDetails.fee_details
@@ -311,11 +326,12 @@ Deno.serve(async (req: Request) => {
         if (updateError) {
           console.error('Error updating payment transaction:', updateError);
         } else {
-          console.log('Successfully updated payment transaction');
+          console.log('✅ Successfully updated payment transaction');
+          console.log('Updated status to:', paymentDetails.status);
 
           // Send confirmation message if payment was just approved
           if (wasNotApproved && isNowApproved && paymentTransaction.students) {
-            console.log('Payment was just approved, sending confirmation message');
+            console.log('🎉 Payment was just approved, sending confirmation message');
             
             try {
               // Get WhatsApp configuration for the photographer
@@ -331,7 +347,7 @@ Deno.serve(async (req: Request) => {
                 const whatsappConfig = settings?.settings?.whatsapp;
                 
                 if (whatsappConfig?.is_connected) {
-                  console.log('WhatsApp is connected, sending confirmation');
+                  console.log('📱 WhatsApp is connected, sending confirmation');
                   
                   const confirmationSent = await sendPaymentConfirmation(
                     paymentTransaction.students,
@@ -358,16 +374,24 @@ Deno.serve(async (req: Request) => {
           }
         }
       } else {
-        console.log('❌ Payment transaction not found and could not be created');
+        console.log('❌ Payment transaction not found for payment ID:', paymentId);
+        console.log('External reference from MP:', paymentDetails.external_reference);
         console.log('This might be a test webhook or payment without proper external_reference');
         
         // Log the webhook for manual processing later
         await supabase
           .from('webhook_logs')
           .insert([{
-            event_type: `unprocessed_${action}`,
+            event_type: `unprocessed_payment_${action}`,
             payload: { ...body, payment_details: paymentDetails },
-            response: { error: 'Payment transaction not found', payment_id: paymentId },
+            response: { 
+              error: 'Payment transaction not found', 
+              payment_id: paymentId,
+              external_reference: paymentDetails.external_reference,
+              amount: paymentDetails.transaction_amount,
+              status: paymentDetails.status,
+              payer_email: paymentDetails.payer?.email
+            },
             status: 'failed'
           }]);
       }
