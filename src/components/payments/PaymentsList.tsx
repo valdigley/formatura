@@ -28,7 +28,6 @@ interface PaymentTransaction {
       name: string;
     } | null;
   } | null;
-}
 
 export const PaymentsList: React.FC = () => {
   const [payments, setPayments] = useState<PaymentTransaction[]>([]);
