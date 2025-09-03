@@ -124,58 +124,55 @@ Deno.serve(async (req: Request) => {
     // Method 1: Search by external_reference
     if (paymentDetails.external_reference) {
       console.log('🔍 Buscando transação por external_reference:', paymentDetails.external_reference);
-      
-      const { data: transactionByRef } = await supabase
-        .from('payment_transactions')
-        .select('*, students(full_name, email, phone)')
-        .eq('external_reference', paymentDetails.external_reference)
-        .single();
-      
-      if (transactionByRef) {
-        transaction = transactionByRef;
-        console.log('✅ Transação encontrada por external_reference');
-      }
-    }
-
-    // Method 2: Search by preference_id (extracted from external_reference or other fields)
-    if (!transaction) {
-      // Try to extract preference_id from the payment details
-      const preferenceId = paymentDetails.additional_info?.external_reference || 
-                          paymentDetails.external_reference;
-      
-      if (preferenceId) {
-        console.log('🔍 Buscando transação por preference_id:', preferenceId);
+    // Method 1: Search by mercadopago_payment_id (if already exists)
+    console.log('🔍 Buscando transação por mercadopago_payment_id:', paymentId);
+    const { data: transactionById } = await supabase
+      .from('payment_transactions')
+      .select('*, students(full_name, email, phone)')
+      .eq('mercadopago_payment_id', paymentId)
+      .single();
+    
+    if (transactionById) {
+      transaction = transactionById;
+      searchMethod = 'mercadopago_payment_id';
+      console.log('✅ Transação encontrada por mercadopago_payment_id');
+    } else {
+      // Method 2: Search by external_reference
+      if (paymentDetails.external_reference) {
+        console.log('🔍 Buscando transação por external_reference:', paymentDetails.external_reference);
         
-        const { data: transactionByPref } = await supabase
+        const { data: transactionByRef } = await supabase
           .from('payment_transactions')
           .select('*, students(full_name, email, phone)')
-          .eq('preference_id', preferenceId)
+          .eq('external_reference', paymentDetails.external_reference)
           .single();
         
-        if (transactionByPref) {
-          transaction = transactionByPref;
-          console.log('✅ Transação encontrada por preference_id');
+        if (transactionByRef) {
+          transaction = transactionByRef;
+          searchMethod = 'external_reference';
+          console.log('✅ Transação encontrada por external_reference');
         }
       }
-    }
 
-    // Method 3: Search by payer email and amount (last resort)
-    if (!transaction && paymentDetails.payer?.email) {
-      console.log('🔍 Buscando transação por email e valor:', paymentDetails.payer.email, paymentDetails.transaction_amount);
-      
-      const { data: transactionByEmail } = await supabase
-        .from('payment_transactions')
-        .select('*, students(full_name, email, phone)')
-        .eq('payer_email', paymentDetails.payer.email)
-        .eq('amount', paymentDetails.transaction_amount)
-        .eq('status', 'pending')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
-      
-      if (transactionByEmail) {
-        transaction = transactionByEmail;
-        console.log('✅ Transação encontrada por email e valor');
+      // Method 3: Search by payer email and amount (for older transactions)
+      if (!transaction && paymentDetails.payer?.email) {
+        console.log('🔍 Buscando transação por email e valor:', paymentDetails.payer.email, paymentDetails.transaction_amount);
+        
+        const { data: transactionByEmail } = await supabase
+          .from('payment_transactions')
+          .select('*, students(full_name, email, phone)')
+          .eq('payer_email', paymentDetails.payer.email)
+          .eq('amount', paymentDetails.transaction_amount.toString())
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+        
+        if (transactionByEmail) {
+          transaction = transactionByEmail;
+          searchMethod = 'email_amount';
+          console.log('✅ Transação encontrada por email e valor');
+        }
       }
     }
 
