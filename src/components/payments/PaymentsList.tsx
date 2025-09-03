@@ -288,14 +288,13 @@ export const PaymentsList: React.FC = () => {
           amount: paymentData.transaction_amount || 0,
           status: paymentData.status || 'pending',
           payment_method: paymentData.payment_method_id || 'unknown',
+          payment_date: paymentData.date_approved ? new Date(paymentData.date_approved).toISOString() : null,
           payer_email: paymentData.payer?.email || '',
           webhook_data: paymentData,
           metadata: {
             currency: paymentData.currency_id,
             installments: paymentData.installments,
             payment_type: paymentData.payment_type_id,
-            date_approved: paymentData.date_approved,
-            date_created: paymentData.date_created,
             imported_manually: true,
             import_date: new Date().toISOString()
           }
