@@ -120,7 +120,8 @@ export const PaymentsList: React.FC = () => {
         body: JSON.stringify({
           access_token: mercadoPagoConfig.access_token,
           environment: mercadoPagoConfig.environment,
-          payment_id: payment.mercadopago_payment_id
+          payment_id: payment.mercadopago_payment_id,
+          action: 'sync-payment'
         }),
       });
 
