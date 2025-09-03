@@ -128,11 +128,6 @@ export const StudentList: React.FC = () => {
       return;
     }
 
-    // Validate WhatsApp configuration
-    if (!whatsappConfig.api_url || !whatsappConfig.api_key || !whatsappConfig.instance_name) {
-      alert('Configuração do WhatsApp incompleta. Verifique a URL da API, chave e nome da instância nas Configurações.');
-      return;
-    }
     setSendingWhatsApp(student.id);
     try {
       // Função para normalizar e tentar diferentes formatos de telefone
@@ -205,9 +200,6 @@ Equipe Fotográfica`;
               number: `${phoneNumber}@s.whatsapp.net`,
               text: message,
             }),
-          }).catch(fetchError => {
-            console.error(`Erro de rede ao conectar com ${whatsappConfig.api_url}:`, fetchError);
-            throw new Error(`Erro de conexão: Verifique se a URL da API está correta e o servidor está acessível. URL atual: ${whatsappConfig.api_url}`);
           });
 
           const responseData = await response.json();
@@ -257,12 +249,7 @@ Equipe Fotográfica`;
         throw new Error(`Falha ao enviar para todos os números testados. Último erro: ${lastError}. Números tentados: ${phoneVariations.join(', ')}`);
       }
     } catch (error: any) {
-      console.error('Erro completo:', error);
-      if (error.message.includes('Failed to fetch') || error.message.includes('Erro de conexão')) {
-        alert(`Erro de conexão com WhatsApp API: ${error.message}\n\nVerifique nas Configurações:\n• URL da API está correta\n• Servidor Evolution API está rodando\n• Não há bloqueios de firewall`);
-      } else {
-        alert(`Erro ao enviar WhatsApp: ${error.message}`);
-      }
+      alert(`Erro ao enviar WhatsApp: ${error.message}`);
     } finally {
       setSendingWhatsApp(null);
     }
@@ -274,11 +261,6 @@ Equipe Fotográfica`;
       return;
     }
 
-    // Validate WhatsApp configuration
-    if (!whatsappConfig.api_url || !whatsappConfig.api_key || !whatsappConfig.instance_name) {
-      alert('Configuração do WhatsApp incompleta. Verifique a URL da API, chave e nome da instância nas Configurações.');
-      return;
-    }
     setSendingPayment(student.id);
     try {
       // Get MercadoPago config
@@ -499,9 +481,6 @@ Obrigado pela confiança! 📷✨`;
               number: `${phoneNumber}@s.whatsapp.net`,
               text: message,
             }),
-          }).catch(fetchError => {
-            console.error(`Erro de rede ao conectar com ${whatsappConfig.api_url}:`, fetchError);
-            throw new Error(`Erro de conexão: Verifique se a URL da API está correta e o servidor está acessível. URL atual: ${whatsappConfig.api_url}`);
           });
 
           const responseData = await whatsappResponse.json();
@@ -556,12 +535,7 @@ Obrigado pela confiança! 📷✨`;
       }
 
     } catch (error: any) {
-      console.error('Erro completo:', error);
-      if (error.message.includes('Failed to fetch') || error.message.includes('Erro de conexão')) {
-        alert(`Erro de conexão com WhatsApp API: ${error.message}\n\nVerifique nas Configurações:\n• URL da API está correta\n• Servidor Evolution API está rodando\n• Não há bloqueios de firewall`);
-      } else {
-        alert(`Erro ao enviar solicitação de pagamento: ${error.message}`);
-      }
+      alert(`Erro ao enviar solicitação de pagamento: ${error.message}`);
     } finally {
       setSendingPayment(null);
     }
