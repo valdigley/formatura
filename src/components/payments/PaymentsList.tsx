@@ -108,19 +108,29 @@ export const PaymentsList: React.FC = () => {
         return;
       }
 
-      // Fetch current payment status from MercadoPago API
-      const response = await fetch(`https://api.mercadopago.com/v1/payments/${payment.mercadopago_payment_id}`, {
+      // Use Supabase Edge Function to avoid CORS issues
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mercadopago?action=sync-payment`;
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
         headers: {
-          'Authorization': `Bearer ${mercadoPagoConfig.access_token}`,
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          access_token: mercadoPagoConfig.access_token,
+          environment: mercadoPagoConfig.environment,
+          payment_id: payment.mercadopago_payment_id
+        }),
       });
 
-      if (!response.ok) {
-        throw new Error(`Erro ao consultar MP: ${response.status}`);
+      const responseData = await response.json();
+
+      if (!response.ok || !responseData.success) {
+        throw new Error(responseData.error || `Erro HTTP: ${response.status}`);
       }
 
-      const mpPaymentData = await response.json();
+      const mpPaymentData = responseData.payment;
       console.log('Status atual no MP:', mpPaymentData.status);
       console.log('Status no sistema:', payment.status);
 
@@ -237,10 +247,29 @@ Obrigado pela confiança! 📷✨`;
       return;
     }
 
+    setRefreshing(true);
+    let successCount = 0;
+    let errorCount = 0;
+
     for (const payment of pendingPayments) {
-      await syncPaymentStatus(payment);
+      try {
+        await syncPaymentStatus(payment);
+        successCount++;
+      } catch (error) {
+        console.error(`Erro ao sincronizar pagamento ${payment.id}:`, error);
+        errorCount++;
+      }
       // Small delay to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    setRefreshing(false);
+    
+    if (successCount > 0) {
+      alert(`${successCount} pagamento(s) sincronizado(s) com sucesso!${errorCount > 0 ? ` ${errorCount} erro(s).` : ''}`);
+      fetchPayments(); // Refresh the list
+    } else {
+      alert('Nenhum pagamento foi sincronizado. Verifique os logs para mais detalhes.');
     }
   };
 

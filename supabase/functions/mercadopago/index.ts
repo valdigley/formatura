@@ -232,6 +232,69 @@ Deno.serve(async (req: Request) => {
         default:
           return new Response(
             JSON.stringify({ error: 'Ação não suportada' }),
+
+     case 'sync-payment':
+       try {
+         const { payment_id } = requestData;
+         
+         if (!payment_id) {
+           return new Response(
+             JSON.stringify({ success: false, error: 'Payment ID é obrigatório' }),
+             {
+               status: 400,
+               headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+             }
+           );
+         }
+
+         const response = await fetch(`${baseUrl}/v1/payments/${payment_id}`, {
+           method: 'GET',
+           headers: {
+             'Authorization': `Bearer ${access_token}`,
+             'Content-Type': 'application/json',
+           },
+         });
+
+         if (response.ok) {
+           const paymentData = await response.json();
+           
+           return new Response(
+             JSON.stringify({
+               success: true,
+               payment: paymentData,
+               message: `Status atual: ${paymentData.status}`
+             }),
+             {
+               headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+             }
+           );
+         } else {
+           const errorData = await response.json();
+           return new Response(
+             JSON.stringify({
+               success: false,
+               error: `${errorData.message || 'Erro ao consultar pagamento'} (Status: ${response.status})`,
+               details: errorData
+             }),
+             {
+               status: response.status,
+               headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+             }
+           );
+         }
+       } catch (error) {
+         return new Response(
+           JSON.stringify({
+             success: false,
+             error: `Erro ao sincronizar pagamento: ${error.message}`,
+           }),
+           {
+             status: 500,
+             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+           }
+         );
+       }
+
             {
               status: 400,
               headers: { ...corsHeaders, 'Content-Type': 'application/json' }
