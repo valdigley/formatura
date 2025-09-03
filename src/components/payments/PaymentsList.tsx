@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { DollarSign, Search, Filter, Eye, CheckCircle, Clock, XCircle, CreditCard, Calendar, User, RefreshCw } from 'lucide-react';
+import { DollarSign, Search, Filter, Eye, CheckCircle, Clock, XCircle, CreditCard, Calendar, User, RefreshCw, Copy, ExternalLink, FileText, Shield } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -36,6 +36,7 @@ export const PaymentsList: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedPayment, setSelectedPayment] = useState<PaymentTransaction | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   useEffect(() => {
     fetchPayments();
@@ -73,6 +74,27 @@ export const PaymentsList: React.FC = () => {
   const refreshPayments = () => {
     setRefreshing(true);
     fetchPayments();
+  };
+
+  const copyToClipboard = async (text: string, fieldName: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(fieldName);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch (error) {
+      console.error('Erro ao copiar:', error);
+    }
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    }).format(amount);
+  };
+
+  const formatDateTime = (dateString: string) => {
+    return format(new Date(dateString), 'dd/MM/yyyy HH:mm:ss', { locale: ptBR });
   };
 
   const filteredPayments = payments.filter(payment => {
@@ -171,7 +193,7 @@ export const PaymentsList: React.FC = () => {
             <div>
               <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Total Recebido</p>
               <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                R$ {totalApproved.toLocaleString('pt-BR')}
+                {formatCurrency(totalApproved)}
               </p>
             </div>
             <div className="p-3 rounded-lg bg-green-100 dark:bg-green-900">
@@ -185,7 +207,7 @@ export const PaymentsList: React.FC = () => {
             <div>
               <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Pendente</p>
               <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
-                R$ {totalPending.toLocaleString('pt-BR')}
+                {formatCurrency(totalPending)}
               </p>
             </div>
             <div className="p-3 rounded-lg bg-yellow-100 dark:bg-yellow-900">
@@ -300,7 +322,7 @@ export const PaymentsList: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900 dark:text-white">
-                      R$ {Number(payment.amount).toLocaleString('pt-BR')}
+                      {formatCurrency(Number(payment.amount))}
                     </div>
                     {payment.metadata?.installments > 1 && (
                       <div className="text-xs text-gray-500 dark:text-gray-400">
@@ -322,7 +344,7 @@ export const PaymentsList: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900 dark:text-white">
                       {payment.payment_date 
-                        ? format(new Date(payment.payment_date), 'dd/MM/yyyy HH:mm', { locale: ptBR })
+                        ? formatDateTime(payment.payment_date)
                         : 'Não pago'
                       }
                     </div>
@@ -378,130 +400,329 @@ export const PaymentsList: React.FC = () => {
                 </span>
               </div>
 
-              {/* Payment Info */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <h3 className="text-lg font-medium text-gray-900 dark:text-white">Informações do Pagamento</h3>
-                  
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600 dark:text-gray-300">Valor:</span>
-                      <span className="text-sm font-medium text-gray-900 dark:text-white">
-                        R$ {Number(selectedPayment.amount).toLocaleString('pt-BR')}
+              {/* Mercado Pago Payment Details */}
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <div className="flex items-center space-x-2 mb-3">
+                  <Shield className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                  <h3 className="text-lg font-medium text-blue-900 dark:text-blue-300">Comprovante Mercado Pago</h3>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Transaction ID */}
+                  <div className="bg-white dark:bg-gray-700 p-3 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">ID da Transação:</span>
+                      <button
+                        onClick={() => copyToClipboard(selectedPayment.mercadopago_payment_id, 'transaction_id')}
+                        className="flex items-center space-x-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+                      >
+                        <span className="text-sm font-mono">{selectedPayment.mercadopago_payment_id}</span>
+                        {copiedField === 'transaction_id' ? (
+                          <CheckCircle className="h-3 w-3 text-green-500" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Amount */}
+                  <div className="bg-white dark:bg-gray-700 p-3 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Valor Pago:</span>
+                      <span className="text-lg font-bold text-green-600 dark:text-green-400">
+                        {formatCurrency(Number(selectedPayment.amount))}
                       </span>
                     </div>
-                    
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600 dark:text-gray-300">Método:</span>
+                  </div>
+
+                  {/* Payment Method Details */}
+                  <div className="bg-white dark:bg-gray-700 p-3 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Método de Pagamento:</span>
                       <span className="text-sm font-medium text-gray-900 dark:text-white">
                         {getPaymentMethodLabel(selectedPayment.payment_method)}
                       </span>
                     </div>
+                    {selectedPayment.webhook_data?.payment_type_id && (
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Tipo: {selectedPayment.webhook_data.payment_type_id}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* External Reference */}
+                  <div className="bg-white dark:bg-gray-700 p-3 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Referência Externa:</span>
+                      <button
+                        onClick={() => copyToClipboard(selectedPayment.external_reference, 'external_ref')}
+                        className="flex items-center space-x-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+                      >
+                        <span className="text-xs font-mono">{selectedPayment.external_reference}</span>
+                        {copiedField === 'external_ref' ? (
+                          <CheckCircle className="h-3 w-3 text-green-500" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Detailed Payment Information */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white flex items-center">
+                    <DollarSign className="h-5 w-5 mr-2" />
+                    Detalhes Financeiros
+                  </h3>
+                  
+                  <div className="space-y-3">
+                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-600 dark:text-gray-300">Valor Bruto:</span>
+                        <span className="text-sm font-medium text-gray-900 dark:text-white">
+                          {formatCurrency(Number(selectedPayment.amount))}
+                        </span>
+                      </div>
+                      
+                      {selectedPayment.webhook_data?.transaction_details?.net_received_amount && (
+                        <div className="flex justify-between items-center mt-2">
+                          <span className="text-sm text-gray-600 dark:text-gray-300">Valor Líquido:</span>
+                          <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                            {formatCurrency(Number(selectedPayment.webhook_data.transaction_details.net_received_amount))}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {selectedPayment.webhook_data?.fee_details && selectedPayment.webhook_data.fee_details.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Taxas:</div>
+                          {selectedPayment.webhook_data.fee_details.map((fee: any, index: number) => (
+                            <div key={index} className="flex justify-between text-xs">
+                              <span>{fee.type}:</span>
+                              <span className="text-red-600 dark:text-red-400">
+                                -{formatCurrency(Number(fee.amount))}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     
                     {selectedPayment.metadata?.installments > 1 && (
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-600 dark:text-gray-300">Parcelas:</span>
-                        <span className="text-sm font-medium text-gray-900 dark:text-white">
-                          {selectedPayment.metadata.installments}x
-                        </span>
+                      <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600 dark:text-gray-300">Parcelas:</span>
+                          <span className="text-sm font-medium text-gray-900 dark:text-white">
+                            {selectedPayment.metadata.installments}x de {formatCurrency(Number(selectedPayment.amount) / selectedPayment.metadata.installments)}
+                          </span>
+                        </div>
                       </div>
                     )}
                     
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600 dark:text-gray-300">ID Mercado Pago:</span>
-                      <span className="text-sm font-mono text-gray-900 dark:text-white">
-                        {selectedPayment.mercadopago_payment_id}
-                      </span>
-                    </div>
-                    
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600 dark:text-gray-300">Referência:</span>
-                      <span className="text-sm font-mono text-gray-900 dark:text-white">
-                        {selectedPayment.external_reference}
-                      </span>
-                    </div>
+                    {selectedPayment.webhook_data?.currency_id && (
+                      <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600 dark:text-gray-300">Moeda:</span>
+                          <span className="text-sm font-medium text-gray-900 dark:text-white">
+                            {selectedPayment.webhook_data.currency_id}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 <div className="space-y-4">
-                  <h3 className="text-lg font-medium text-gray-900 dark:text-white">Informações do Cliente</h3>
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white flex items-center">
+                    <User className="h-5 w-5 mr-2" />
+                    Informações do Pagador
+                  </h3>
                   
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600 dark:text-gray-300">Nome:</span>
-                      <span className="text-sm font-medium text-gray-900 dark:text-white">
-                        {selectedPayment.students?.full_name || 'N/A'}
-                      </span>
+                  <div className="space-y-3">
+                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-600 dark:text-gray-300">Nome:</span>
+                        <span className="text-sm font-medium text-gray-900 dark:text-white">
+                          {selectedPayment.webhook_data?.payer?.first_name && selectedPayment.webhook_data?.payer?.last_name 
+                            ? `${selectedPayment.webhook_data.payer.first_name} ${selectedPayment.webhook_data.payer.last_name}`
+                            : selectedPayment.students?.full_name || 'N/A'}
+                        </span>
+                      </div>
+                      
+                      {selectedPayment.webhook_data?.payer?.identification && (
+                        <div className="flex justify-between mt-2">
+                          <span className="text-sm text-gray-600 dark:text-gray-300">
+                            {selectedPayment.webhook_data.payer.identification.type}:
+                          </span>
+                          <span className="text-sm font-mono text-gray-900 dark:text-white">
+                            {selectedPayment.webhook_data.payer.identification.number}
+                          </span>
+                        </div>
+                      )}
                     </div>
                     
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600 dark:text-gray-300">Email:</span>
-                      <span className="text-sm font-medium text-gray-900 dark:text-white">
-                        {selectedPayment.payer_email}
-                      </span>
+                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-600 dark:text-gray-300">Email:</span>
+                        <span className="text-sm font-medium text-gray-900 dark:text-white">
+                          {selectedPayment.webhook_data?.payer?.email || selectedPayment.payer_email}
+                        </span>
+                      </div>
+                      
+                      {selectedPayment.webhook_data?.payer?.phone && (
+                        <div className="flex justify-between mt-2">
+                          <span className="text-sm text-gray-600 dark:text-gray-300">Telefone:</span>
+                          <span className="text-sm font-medium text-gray-900 dark:text-white">
+                            {selectedPayment.webhook_data.payer.phone.area_code} {selectedPayment.webhook_data.payer.phone.number}
+                          </span>
+                        </div>
+                      )}
                     </div>
                     
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600 dark:text-gray-300">Telefone:</span>
-                      <span className="text-sm font-medium text-gray-900 dark:text-white">
-                        {selectedPayment.students?.phone || 'N/A'}
-                      </span>
-                    </div>
-                    
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600 dark:text-gray-300">Turma:</span>
-                      <span className="text-sm font-medium text-gray-900 dark:text-white">
-                        {selectedPayment.students?.graduation_classes?.name || 'N/A'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Timeline */}
-              <div>
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Timeline</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center space-x-3">
-                    <div className="h-2 w-2 bg-blue-500 rounded-full"></div>
-                    <div className="text-sm text-gray-600 dark:text-gray-300">
-                      <span className="font-medium">Pagamento criado:</span> {format(new Date(selectedPayment.created_at), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
-                    </div>
-                  </div>
-                  
-                  {selectedPayment.payment_date && (
-                    <div className="flex items-center space-x-3">
-                      <div className="h-2 w-2 bg-green-500 rounded-full"></div>
-                      <div className="text-sm text-gray-600 dark:text-gray-300">
-                        <span className="font-medium">Pagamento aprovado:</span> {format(new Date(selectedPayment.payment_date), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
+                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-600 dark:text-gray-300">Turma:</span>
+                        <span className="text-sm font-medium text-gray-900 dark:text-white">
+                          {selectedPayment.students?.graduation_classes?.name || selectedPayment.metadata?.graduation_class || 'N/A'}
+                        </span>
                       </div>
                     </div>
-                  )}
-                  
-                  <div className="flex items-center space-x-3">
-                    <div className="h-2 w-2 bg-gray-400 rounded-full"></div>
-                    <div className="text-sm text-gray-600 dark:text-gray-300">
-                      <span className="font-medium">Última atualização:</span> {format(new Date(selectedPayment.updated_at), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Mercado Pago Technical Details */}
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4 flex items-center">
+                  <FileText className="h-5 w-5 mr-2" />
+                  Dados Técnicos do Mercado Pago
+                </h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Payment IDs */}
+                  <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                    <h4 className="font-medium text-gray-900 dark:text-white mb-3">Identificadores</h4>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-600 dark:text-gray-300">Payment ID:</span>
+                        <button
+                          onClick={() => copyToClipboard(selectedPayment.mercadopago_payment_id, 'payment_id')}
+                          className="flex items-center space-x-1 text-blue-600 dark:text-blue-400"
+                        >
+                          <span className="text-xs font-mono">{selectedPayment.mercadopago_payment_id}</span>
+                          {copiedField === 'payment_id' ? <CheckCircle className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                        </button>
+                      </div>
+                      
+                      {selectedPayment.preference_id && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-gray-600 dark:text-gray-300">Preference ID:</span>
+                          <button
+                            onClick={() => copyToClipboard(selectedPayment.preference_id, 'preference_id')}
+                            className="flex items-center space-x-1 text-blue-600 dark:text-blue-400"
+                          >
+                            <span className="text-xs font-mono">{selectedPayment.preference_id}</span>
+                            {copiedField === 'preference_id' ? <CheckCircle className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                          </button>
+                        </div>
+                      )}
+                      
+                      {selectedPayment.webhook_data?.collector_id && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-gray-600 dark:text-gray-300">Collector ID:</span>
+                          <span className="text-xs font-mono text-gray-900 dark:text-white">
+                            {selectedPayment.webhook_data.collector_id}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Transaction Details */}
+                  <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                    <h4 className="font-medium text-gray-900 dark:text-white mb-3">Detalhes da Transação</h4>
+                    <div className="space-y-2">
+                      {selectedPayment.webhook_data?.transaction_details?.financial_institution && (
+                        <div className="flex justify-between">
+                          <span className="text-xs text-gray-600 dark:text-gray-300">Banco:</span>
+                          <span className="text-xs font-medium text-gray-900 dark:text-white">
+                            {selectedPayment.webhook_data.transaction_details.financial_institution}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {selectedPayment.webhook_data?.transaction_details?.installment_amount && (
+                        <div className="flex justify-between">
+                          <span className="text-xs text-gray-600 dark:text-gray-300">Valor da Parcela:</span>
+                          <span className="text-xs font-medium text-gray-900 dark:text-white">
+                            {formatCurrency(Number(selectedPayment.webhook_data.transaction_details.installment_amount))}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {selectedPayment.webhook_data?.installments && selectedPayment.webhook_data.installments > 1 && (
+                        <div className="flex justify-between">
+                          <span className="text-xs text-gray-600 dark:text-gray-300">Parcelas:</span>
+                          <span className="text-xs font-medium text-gray-900 dark:text-white">
+                            {selectedPayment.webhook_data.installments}x
+                          </span>
+                        </div>
+                      )}
+                      
+                      {selectedPayment.webhook_data?.transaction_details?.total_paid_amount && (
+                        <div className="flex justify-between">
+                          <span className="text-xs text-gray-600 dark:text-gray-300">Total Pago:</span>
+                          <span className="text-xs font-medium text-green-600 dark:text-green-400">
+                            {formatCurrency(Number(selectedPayment.webhook_data.transaction_details.total_paid_amount))}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Raw Data (for debugging) */}
-              {selectedPayment.webhook_data && Object.keys(selectedPayment.webhook_data).length > 0 && (
+              {/* Card Details (if available) */}
+              {selectedPayment.webhook_data?.card && (
                 <div>
-                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Dados Técnicos</h3>
-                  <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-4 max-h-40 overflow-y-auto">
-                    <pre className="text-xs text-gray-600 dark:text-gray-300 whitespace-pre-wrap">
-                      {JSON.stringify(selectedPayment.webhook_data, null, 2)}
-                    </pre>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4 flex items-center">
+                    <CreditCard className="h-5 w-5 mr-2" />
+                    Detalhes do Cartão
+                  </h3>
+                  
+                  <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {selectedPayment.webhook_data.card.first_six_digits && (
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600 dark:text-gray-300">Primeiros 6 dígitos:</span>
+                          <span className="text-sm font-mono text-gray-900 dark:text-white">
+                            {selectedPayment.webhook_data.card.first_six_digits}****
+                          </span>
+                        </div>
+                      )}
+                      
+                      {selectedPayment.webhook_data.card.last_four_digits && (
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600 dark:text-gray-300">Últimos 4 dígitos:</span>
+                          <span className="text-sm font-mono text-gray-900 dark:text-white">
+                            ****{selectedPayment.webhook_data.card.last_four_digits}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {selectedPayment.webhook_data.card.cardholder && (
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600 dark:text-gray-300">Portador:</span>
+                          <span className="text-sm font-medium text-gray-900 dark:text-white">
+                            {selectedPayment.webhook_data.card.cardholder.name}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {selectedPayment.webhook_data.issuer_id && (
+                        <div className="flex justify-between">
+                          <span className="
