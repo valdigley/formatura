@@ -725,4 +725,77 @@ export const PaymentsList: React.FC = () => {
                       
                       {selectedPayment.webhook_data.issuer_id && (
                         <div className="flex justify-between">
-                          <span className="
+                          <span className="text-sm text-gray-600 dark:text-gray-300">Emissor:</span>
+                          <span className="text-sm font-medium text-gray-900 dark:text-white">
+                            {selectedPayment.webhook_data.issuer_id}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+              {/* Timeline */}
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4 flex items-center">
+                  <Calendar className="h-5 w-5 mr-2" />
+                  Timeline do Pagamento
+                </h3>
+                
+                <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                  <div className="space-y-3">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600 dark:text-gray-300">Criado em:</span>
+                      <span className="text-sm font-medium text-gray-900 dark:text-white">
+                        {formatDateTime(selectedPayment.created_at)}
+                      </span>
+                    </div>
+                    
+                    {selectedPayment.webhook_data?.date_created && (
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-600 dark:text-gray-300">Processado no MP:</span>
+                        <span className="text-sm font-medium text-gray-900 dark:text-white">
+                          {formatDateTime(selectedPayment.webhook_data.date_created)}
+                        </span>
+                      </div>
+                    )}
+                    
+                    {selectedPayment.webhook_data?.date_approved && (
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-600 dark:text-gray-300">Aprovado em:</span>
+                        <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                          {formatDateTime(selectedPayment.webhook_data.date_approved)}
+                        </span>
+                      </div>
+                    )}
+                    
+                    {selectedPayment.webhook_data?.date_last_updated && (
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-600 dark:text-gray-300">Última atualização:</span>
+                        <span className="text-sm font-medium text-gray-900 dark:text-white">
+                          {formatDateTime(selectedPayment.webhook_data.date_last_updated)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Raw Webhook Data (Expandable) */}
+              <details className="bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <summary className="p-4 cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">
+                  Ver dados brutos do webhook (técnico)
+                </summary>
+                <div className="p-4 pt-0">
+                  <pre className="text-xs bg-gray-900 text-green-400 p-3 rounded overflow-x-auto">
+                    {JSON.stringify(selectedPayment.webhook_data, null, 2)}
+                  </pre>
+                </div>
+              </details>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
