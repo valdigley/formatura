@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { DollarSign, Search, Filter, Eye, CheckCircle, Clock, XCircle, CreditCard, Calendar, User, RefreshCw, Copy, ExternalLink, FileText, Shield } from 'lucide-react';
+import { DollarSign, Search, Filter, Eye, CheckCircle, Clock, XCircle, CreditCard, Calendar, User, RefreshCw, Copy, ExternalLink, FileText, Shield, Bug } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { PaymentDebug } from './PaymentDebug';
 
 interface PaymentTransaction {
   id: string;
@@ -37,6 +38,7 @@ export const PaymentsList: React.FC = () => {
   const [selectedPayment, setSelectedPayment] = useState<PaymentTransaction | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [showDebug, setShowDebug] = useState(false);
 
   useEffect(() => {
     fetchPayments();
@@ -179,10 +181,17 @@ export const PaymentsList: React.FC = () => {
         <button
           onClick={refreshPayments}
           disabled={refreshing}
-          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors mr-3"
         >
           <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
           {refreshing ? 'Atualizando...' : 'Atualizar'}
+        </button>
+        <button
+          onClick={() => setShowDebug(!showDebug)}
+          className="inline-flex items-center px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+        >
+          <Bug className="h-4 w-4 mr-2" />
+          {showDebug ? 'Ocultar Debug' : 'Debug'}
         </button>
       </div>
 
@@ -799,4 +808,11 @@ export const PaymentsList: React.FC = () => {
       )}
     </div>
   );
+    {/* Debug Panel */}
+    {showDebug && (
+      <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl p-6">
+        <PaymentDebug />
+      </div>
+    )}
+
 };
