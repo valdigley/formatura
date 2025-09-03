@@ -39,6 +39,7 @@ export const PaymentsList: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [showDebug, setShowDebug] = useState(false);
+  const [syncingPayment, setSyncingPayment] = useState<string | null>(null);
 
   useEffect(() => {
     fetchPayments();
@@ -85,6 +86,161 @@ export const PaymentsList: React.FC = () => {
       setTimeout(() => setCopiedField(null), 2000);
     } catch (error) {
       console.error('Erro ao copiar:', error);
+    }
+  };
+
+  const syncPaymentStatus = async (payment: PaymentTransaction) => {
+    setSyncingPayment(payment.id);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Usuário não autenticado');
+
+      // Get MercadoPago config
+      const { data: settings } = await supabase
+        .from('user_settings')
+        .select('settings')
+        .eq('user_id', user.id)
+        .single();
+
+      const mercadoPagoConfig = settings?.settings?.mercadopago;
+      if (!mercadoPagoConfig?.access_token) {
+        alert('Configure o Mercado Pago primeiro nas configurações');
+        return;
+      }
+
+      // Fetch current payment status from MercadoPago API
+      const response = await fetch(`https://api.mercadopago.com/v1/payments/${payment.mercadopago_payment_id}`, {
+        headers: {
+          'Authorization': `Bearer ${mercadoPagoConfig.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro ao consultar MP: ${response.status}`);
+      }
+
+      const mpPaymentData = await response.json();
+      console.log('Status atual no MP:', mpPaymentData.status);
+      console.log('Status no sistema:', payment.status);
+
+      // Update local payment if status changed
+      if (mpPaymentData.status !== payment.status) {
+        const { error: updateError } = await supabase
+          .from('payment_transactions')
+          .update({
+            status: mpPaymentData.status,
+            payment_method: mpPaymentData.payment_method_id || payment.payment_method,
+            payment_date: mpPaymentData.date_approved ? new Date(mpPaymentData.date_approved).toISOString() : payment.payment_date,
+            webhook_data: mpPaymentData,
+            metadata: {
+              ...payment.metadata,
+              last_sync: new Date().toISOString(),
+              synced_from_api: true,
+              previous_status: payment.status
+            },
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', payment.id);
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        alert(`Status atualizado de "${payment.status}" para "${mpPaymentData.status}"!`);
+        
+        // Send WhatsApp confirmation if payment was approved
+        if (mpPaymentData.status === 'approved' && payment.status !== 'approved' && payment.students) {
+          await sendPaymentConfirmationWhatsApp(payment.students, mpPaymentData);
+        }
+        
+        fetchPayments(); // Refresh the list
+      } else {
+        alert('Status já está atualizado no sistema');
+      }
+    } catch (error: any) {
+      alert(`Erro ao sincronizar: ${error.message}`);
+    } finally {
+      setSyncingPayment(null);
+    }
+  };
+
+  const sendPaymentConfirmationWhatsApp = async (student: any, paymentData: any) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: settings } = await supabase
+        .from('user_settings')
+        .select('settings')
+        .eq('user_id', user.id)
+        .single();
+
+      const whatsappConfig = settings?.settings?.whatsapp;
+      if (!whatsappConfig?.is_connected) {
+        console.log('WhatsApp não configurado para confirmação');
+        return;
+      }
+
+      const cleanPhone = student.phone.replace(/\D/g, '');
+      const formattedPhone = cleanPhone.length === 11 ? `55${cleanPhone}` : cleanPhone;
+
+      const confirmationMessage = `🎉 *PAGAMENTO CONFIRMADO!* 🎉
+
+Olá ${student.full_name}!
+
+✅ Confirmamos o recebimento do seu pagamento!
+
+📋 *DETALHES:*
+• Valor: R$ ${Number(paymentData.transaction_amount).toLocaleString('pt-BR')}
+• Método: ${paymentData.payment_method_id === 'pix' ? 'PIX' : 
+           paymentData.payment_method_id === 'credit_card' ? 'Cartão de Crédito' :
+           paymentData.payment_method_id === 'debit_card' ? 'Cartão de Débito' :
+           paymentData.payment_method_id}
+• Data: ${new Date(paymentData.date_approved).toLocaleDateString('pt-BR')} às ${new Date(paymentData.date_approved).toLocaleTimeString('pt-BR')}
+• ID da Transação: ${paymentData.id}
+
+📸 *SUA SESSÃO FOTOGRÁFICA ESTÁ CONFIRMADA!*
+
+🗓️ *PRÓXIMOS PASSOS:*
+• Aguarde contato para confirmar data e horário
+• Prepare-se para o grande dia da formatura
+• Em caso de dúvidas, estamos à disposição
+
+Obrigado pela confiança! 📷✨`;
+
+      await fetch(`${whatsappConfig.api_url}/message/sendText/${whatsappConfig.instance_name}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': whatsappConfig.api_key,
+        },
+        body: JSON.stringify({
+          number: `${formattedPhone}@s.whatsapp.net`,
+          text: confirmationMessage,
+        }),
+      });
+    } catch (error) {
+      console.error('Error sending payment confirmation:', error);
+    }
+  };
+
+  const syncAllPendingPayments = async () => {
+    const pendingPayments = payments.filter(p => p.status === 'pending' || p.status === 'in_process');
+    
+    if (pendingPayments.length === 0) {
+      alert('Não há pagamentos pendentes para sincronizar');
+      return;
+    }
+
+    if (!confirm(`Sincronizar ${pendingPayments.length} pagamento(s) pendente(s) com o Mercado Pago?`)) {
+      return;
+    }
+
+    for (const payment of pendingPayments) {
+      await syncPaymentStatus(payment);
+      // Small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
   };
 
@@ -185,6 +341,13 @@ export const PaymentsList: React.FC = () => {
         >
           <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
           {refreshing ? 'Atualizando...' : 'Atualizar'}
+        </button>
+        <button
+          onClick={syncAllPendingPayments}
+          className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors mr-3"
+        >
+          <CheckCircle className="h-4 w-4 mr-2" />
+          Sincronizar Pendentes
         </button>
         <button
           onClick={() => setShowDebug(!showDebug)}
@@ -362,12 +525,28 @@ export const PaymentsList: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button
-                      onClick={() => setSelectedPayment(payment)}
-                      className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300"
-                    >
-                      <Eye className="h-4 w-4" />
-                    </button>
+                    <div className="flex space-x-2">
+                      {(payment.status === 'pending' || payment.status === 'in_process') && (
+                        <button
+                          onClick={() => syncPaymentStatus(payment)}
+                          disabled={syncingPayment === payment.id}
+                          className="text-green-600 dark:text-green-400 hover:text-green-900 dark:hover:text-green-300"
+                          title="Sincronizar status com Mercado Pago"
+                        >
+                          {syncingPayment === payment.id ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
+                          ) : (
+                            <RefreshCw className="h-4 w-4" />
+                          )}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setSelectedPayment(payment)}
+                        className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -806,13 +985,13 @@ export const PaymentsList: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Debug Panel */}
+      {showDebug && (
+        <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl p-6">
+          <PaymentDebug />
+        </div>
+      )}
     </div>
   );
-    {/* Debug Panel */}
-    {showDebug && (
-      <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl p-6">
-        <PaymentDebug />
-      </div>
-    )}
-
 };
