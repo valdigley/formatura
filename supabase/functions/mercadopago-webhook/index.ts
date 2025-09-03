@@ -120,7 +120,6 @@ Deno.serve(async (req: Request) => {
 
     // Find existing transaction in database
     let transaction = null;
-    let searchMethod = '';
     
     // Method 1: Search by external_reference
     if (paymentDetails.external_reference) {
