@@ -6,6 +6,29 @@ const corsHeaders = {
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
+// Function to fetch payment details from MercadoPago API
+async function fetchPaymentDetails(paymentId: string, accessToken: string) {
+  try {
+    const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (response.ok) {
+      return await response.json();
+    } else {
+      console.error(`Error fetching payment ${paymentId}:`, response.status);
+      return null;
+    }
+  } catch (error) {
+    console.error(`Error fetching payment ${paymentId}:`, error);
+    return null;
+  }
+}
+
 // Function to send WhatsApp confirmation message
 async function sendPaymentConfirmation(studentData: any, paymentData: any, whatsappConfig: any) {
   try {
@@ -123,63 +146,117 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      // Use webhook data directly (more reliable)
-      const paymentDetails = body.data || body;
-      console.log('Payment details from webhook:', {
+      // Get MercadoPago access token from any user (we'll find the right one later)
+      console.log('=== FETCHING PAYMENT DETAILS FROM MERCADOPAGO API ===');
+      
+      // First, try to find existing transaction to get the access token
+      let accessToken = null;
+      let paymentTransaction = null;
+      
+      // Try to find existing transaction by mercadopago_payment_id
+      const { data: existingByMpId } = await supabase
+        .from('payment_transactions')
+        .select('*, students(user_id, full_name, phone, email)')
+        .eq('mercadopago_payment_id', paymentId.toString())
+        .single();
+
+      if (existingByMpId) {
+        paymentTransaction = existingByMpId;
+        console.log('✅ Found transaction by mercadopago_payment_id:', paymentTransaction.id);
+        
+        // Get access token for this user
+        const { data: settings } = await supabase
+          .from('user_settings')
+          .select('settings')
+          .eq('user_id', paymentTransaction.students.user_id)
+          .single();
+        
+        accessToken = settings?.settings?.mercadopago?.access_token;
+      }
+      
+      // If no transaction found, try to get access token from any configured user
+      if (!accessToken) {
+        console.log('No existing transaction found, trying to get access token from any user');
+        const { data: allSettings } = await supabase
+          .from('user_settings')
+          .select('user_id, settings')
+          .not('settings->mercadopago->access_token', 'is', null)
+          .limit(1)
+          .single();
+        
+        if (allSettings?.settings?.mercadopago?.access_token) {
+          accessToken = allSettings.settings.mercadopago.access_token;
+          console.log('Found access token from user:', allSettings.user_id);
+        }
+      }
+      
+      if (!accessToken) {
+        console.error('No MercadoPago access token found');
+        return new Response(
+          JSON.stringify({ error: 'No MercadoPago access token configured' }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          }
+        );
+      }
+      
+      // Fetch payment details from MercadoPago API
+      const paymentDetails = await fetchPaymentDetails(paymentId.toString(), accessToken);
+      
+      if (!paymentDetails) {
+        console.error('Failed to fetch payment details from MercadoPago API');
+        return new Response(
+          JSON.stringify({ error: 'Failed to fetch payment details' }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          }
+        );
+      }
+      
+      console.log('Payment details from MercadoPago API:', {
         id: paymentDetails.id,
         status: paymentDetails.status,
         external_reference: paymentDetails.external_reference,
         amount: paymentDetails.transaction_amount,
-        preference_id: paymentDetails.preference_id
+        preference_id: paymentDetails.preference_id,
+        payment_method: paymentDetails.payment_method_id,
+        payer_email: paymentDetails.payer?.email
       });
 
-      // Find or create payment transaction
-      let paymentTransaction = null;
-      
-      console.log('=== SEARCHING FOR EXISTING TRANSACTION ===');
-      
-      // Try to find by preference_id first (most reliable)
-      if (paymentDetails.preference_id) {
-        console.log('Searching by preference_id:', paymentDetails.preference_id);
-        const { data: existingByPref } = await supabase
-          .from('payment_transactions')
-          .select('*, students(user_id, full_name, phone, email)')
-          .eq('preference_id', paymentDetails.preference_id)
-          .single();
-
-        if (existingByPref) {
-          paymentTransaction = existingByPref;
-          console.log('✅ Found transaction by preference_id:', paymentTransaction.id);
-        }
-      }
-      
-      // If not found by preference_id, try by mercadopago_payment_id
+      // If we don't have a transaction yet, try to find it by preference_id or external_reference
       if (!paymentTransaction) {
-        console.log('Searching by mercadopago_payment_id:', paymentId);
-        const { data: existingByMpId } = await supabase
-          .from('payment_transactions')
-          .select('*, students(user_id, full_name, phone, email)')
-          .eq('mercadopago_payment_id', paymentId.toString())
-          .single();
+        console.log('=== SEARCHING FOR TRANSACTION ===');
+        
+        // Try to find by preference_id first (most reliable)
+        if (paymentDetails.preference_id) {
+          console.log('Searching by preference_id:', paymentDetails.preference_id);
+          const { data: existingByPref } = await supabase
+            .from('payment_transactions')
+            .select('*, students(user_id, full_name, phone, email)')
+            .eq('preference_id', paymentDetails.preference_id)
+            .single();
 
-        if (existingByMpId) {
-          paymentTransaction = existingByMpId;
-          console.log('✅ Found transaction by mercadopago_payment_id:', paymentTransaction.id);
+          if (existingByPref) {
+            paymentTransaction = existingByPref;
+            console.log('✅ Found transaction by preference_id:', paymentTransaction.id);
+          }
         }
-      }
-      
-      // If not found, try by external_reference
-      if (!paymentTransaction && paymentDetails.external_reference) {
-        console.log('Searching by external_reference:', paymentDetails.external_reference);
-        const { data: existingByRef } = await supabase
-          .from('payment_transactions')
-          .select('*, students(user_id, full_name, phone, email)')
-          .eq('external_reference', paymentDetails.external_reference)
-          .single();
+        
+        // If not found, try by external_reference
+        if (!paymentTransaction && paymentDetails.external_reference) {
+          console.log('Searching by external_reference:', paymentDetails.external_reference);
+          const { data: existingByRef } = await supabase
+            .from('payment_transactions')
+            .select('*, students(user_id, full_name, phone, email)')
+            .eq('external_reference', paymentDetails.external_reference)
+            .single();
 
-        if (existingByRef) {
-          paymentTransaction = existingByRef;
-          console.log('✅ Found transaction by external_reference:', paymentTransaction.id);
+          if (existingByRef) {
+            paymentTransaction = existingByRef;
+            console.log('✅ Found transaction by external_reference:', paymentTransaction.id);
+          }
         }
       }
       
