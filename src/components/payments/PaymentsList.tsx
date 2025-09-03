@@ -733,7 +733,8 @@ export const PaymentsList: React.FC = () => {
                       )}
                     </div>
                   </div>
-                )}
+                </div>
+              )}
 
               {/* Timeline */}
               <div>
