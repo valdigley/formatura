@@ -258,7 +258,7 @@ Deno.serve(async (req: Request) => {
                   currency: paymentDetails.currency_id,
                   installments: paymentDetails.installments,
                   payment_type: paymentDetails.payment_type_id,
-                  transaction_details: paymentDetails.transaction_details
+                  transaction_details: paymentDetails.transaction_details,
                   webhook_received_at: new Date().toISOString(),
                   webhook_action: action
                 }
