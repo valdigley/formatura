@@ -186,8 +186,11 @@ export const StudentForm: React.FC<StudentFormProps> = ({
                   onChange={(e) => handleChange('full_name', e.target.value)}
                   required
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
-                  placeholder="Nome completo do formando"
+                  placeholder="Nome e sobrenome completos"
                 />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Digite nome e sobrenome separados (obrigatório para pagamentos)
+                </p>
               </div>
 
               <div>

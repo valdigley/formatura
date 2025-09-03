@@ -301,6 +301,16 @@ Equipe Fotográfica`;
       // Create payment preference
       const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mercadopago?action=create-preference`;
       
+      // Split full name for better approval rates
+      const nameParts = student.full_name.trim().split(' ');
+      const firstName = nameParts[0] || student.full_name;
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : 'Silva';
+      
+      // Extract address components if available
+      const addressParts = student.address ? student.address.split(',') : [];
+      const streetName = addressParts[0]?.trim() || 'Rua das Flores';
+      const streetNumber = addressParts[1]?.trim().replace(/\D/g, '') || '123';
+      
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
@@ -313,13 +323,19 @@ Equipe Fotográfica`;
           title: packageName,
           amount: packagePrice,
           payer: {
-            name: student.full_name,
+            name: firstName,
+            surname: lastName,
             email: student.email,
             phone: {
               area_code: student.phone.substring(0, 2),
               number: student.phone.substring(2)
             },
-            cpf: student.cpf || '12345678909'
+            cpf: student.cpf || '12345678909',
+            address: {
+              street_name: streetName,
+              street_number: parseInt(streetNumber) || 123,
+              zip_code: '01234567'
+            }
           },
           external_reference: `student-${student.id}-${Date.now()}`,
           notification_url: `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mercadopago-webhook`

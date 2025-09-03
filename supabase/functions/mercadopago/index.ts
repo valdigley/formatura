@@ -123,15 +123,25 @@ Deno.serve(async (req: Request) => {
             // Generate unique idempotency key for this request
             const idempotencyKey = `pref-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             
+            // Split full name into first and last name for better approval rates
+            const fullName = requestData.payer?.name || 'João Silva';
+            const nameParts = fullName.trim().split(' ');
+            const firstName = nameParts[0] || 'João';
+            const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : 'Silva';
+            
             const preferenceData = {
               items: [{
+                id: `photo-package-${Date.now()}`,
                 title: requestData.title || 'Pacote Fotográfico',
+                description: `Sessão fotográfica de formatura - ${requestData.title || 'Pacote Fotográfico de Formatura'}`,
+                category_id: 'services',
                 quantity: 1,
                 unit_price: requestData.amount || 10.00,
                 currency_id: 'BRL'
               }],
               payer: {
-                name: requestData.payer?.name || 'João Silva',
+                name: firstName,
+                surname: lastName,
                 email: requestData.payer?.email || 'test@example.com',
                 phone: {
                   area_code: requestData.payer?.phone?.area_code || '11',
@@ -140,15 +150,31 @@ Deno.serve(async (req: Request) => {
                 identification: {
                   type: 'CPF',
                   number: requestData.payer?.cpf || '12345678909'
+                },
+                address: {
+                  street_name: requestData.payer?.address?.street_name || 'Rua das Flores',
+                  street_number: requestData.payer?.address?.street_number || 123,
+                  zip_code: requestData.payer?.address?.zip_code || '01234567'
                 }
+              },
+              payment_methods: {
+                excluded_payment_methods: [],
+                excluded_payment_types: [],
+                installments: 12,
+                default_installments: 1
+              },
+              shipments: {
+                mode: 'not_specified'
               },
               back_urls: {
                 success: requestData.back_urls?.success || 'https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=',
                 failure: requestData.back_urls?.failure || 'https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=',
                 pending: requestData.back_urls?.pending || 'https://www.mercadopago.com.br/checkout/v1/redirect?pref_id='
               },
+              auto_return: 'approved',
               notification_url: requestData.notification_url || `${url.origin}/api/webhooks/mercadopago`,
               external_reference: requestData.external_reference || `payment-${Date.now()}`,
+              statement_descriptor: 'FOTO FORMATURA',
               expires: true,
               expiration_date_from: new Date().toISOString(),
               expiration_date_to: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24 hours

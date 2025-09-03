@@ -104,6 +104,8 @@ Deno.serve(async (req: Request) => {
       const action = body.action || body.type;
 
       console.log('Processing payment webhook:', { paymentId, action });
+      console.log('Payment status from webhook:', body.data?.status || body.status);
+      console.log('External reference:', body.data?.external_reference || body.external_reference);
 
       if (!paymentId) {
         console.log('No payment ID found in webhook');

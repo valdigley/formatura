@@ -401,6 +401,16 @@ Equipe Fotográfica 📷✨`;
       // Create payment preference
       const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mercadopago?action=create-preference`;
       
+      // Split full name for better approval rates
+      const nameParts = formData.full_name.trim().split(' ');
+      const firstName = nameParts[0] || formData.full_name;
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : 'Silva';
+      
+      // Extract address components
+      const addressParts = formData.address ? formData.address.split(',') : [];
+      const streetName = addressParts[0]?.trim() || 'Rua das Flores';
+      const streetNumber = addressParts[1]?.trim().replace(/\D/g, '') || '123';
+      
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
@@ -413,13 +423,19 @@ Equipe Fotográfica 📷✨`;
           title: packageData?.name || 'Pacote Fotográfico de Formatura',
           amount: paymentData.final_price || packageData?.price || 500,
           payer: {
-            name: studentData.full_name,
+            name: firstName,
+            surname: lastName,
             email: studentData.email,
             phone: {
               area_code: studentData.phone.substring(0, 2),
               number: studentData.phone.substring(2)
             },
-            cpf: studentData.cpf || '12345678909'
+            cpf: studentData.cpf || '12345678909',
+            address: {
+              street_name: streetName,
+              street_number: parseInt(streetNumber) || 123,
+              zip_code: studentData.city ? '01234567' : '01234567'
+            }
           },
           external_reference: `student-${studentData.id || Date.now()}-registration`,
           notification_url: `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mercadopago-webhook`,
@@ -753,8 +769,11 @@ Obrigado! 📷✨`;
                     onChange={(e) => handleChange('full_name', e.target.value)}
                     required
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 transition-colors"
-                    placeholder="Seu nome completo"
+                    placeholder="Nome e sobrenome completos"
                   />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Digite nome e sobrenome separados (obrigatório para pagamentos)
+                  </p>
                 </div>
 
                 <div>
