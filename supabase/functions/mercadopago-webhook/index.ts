@@ -310,7 +310,7 @@ Deno.serve(async (req: Request) => {
       const isNowApproved = paymentDetails.status === 'approved';
       
       const updateData = {
-        mercadopago_payment_id: paymentId.toString(),
+        mercadopago_payment_id: paymentDetails.id.toString(),
         status: paymentDetails.status || paymentTransaction.status,
         payment_method: paymentDetails.payment_method_id || paymentDetails.payment_method || paymentTransaction.payment_method,
         amount: paymentDetails.transaction_amount || paymentDetails.amount || paymentTransaction.amount,
@@ -327,7 +327,8 @@ Deno.serve(async (req: Request) => {
           date_created: paymentDetails.date_created,
           last_webhook_update: new Date().toISOString(),
           webhook_action: action,
-          fee_details: paymentDetails.fee_details
+          fee_details: paymentDetails.fee_details,
+          original_webhook_payment_id: paymentId.toString()
         },
         updated_at: new Date().toISOString()
       };
