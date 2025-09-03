@@ -40,6 +40,8 @@ export const PaymentsList: React.FC = () => {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [syncingPayment, setSyncingPayment] = useState<string | null>(null);
+  const [manualPaymentId, setManualPaymentId] = useState('');
+  const [importingPayment, setImportingPayment] = useState(false);
 
   useEffect(() => {
     fetchPayments();
@@ -178,6 +180,141 @@ export const PaymentsList: React.FC = () => {
       alert(`Erro ao sincronizar: ${error.message}`);
     } finally {
       setSyncingPayment(null);
+    }
+  };
+
+  const importPaymentManually = async () => {
+    if (!manualPaymentId.trim()) {
+      alert('Digite um ID de pagamento para importar');
+      return;
+    }
+
+    setImportingPayment(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Usuário não autenticado');
+
+      // Get MercadoPago config
+      const { data: settings } = await supabase
+        .from('user_settings')
+        .select('settings')
+        .eq('user_id', user.id)
+        .single();
+
+      const mercadoPagoConfig = settings?.settings?.mercadopago;
+      if (!mercadoPagoConfig?.access_token) {
+        alert('Configure o Mercado Pago primeiro nas configurações');
+        return;
+      }
+
+      // Search payment in MercadoPago API
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mercadopago?action=sync-payment`;
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          access_token: mercadoPagoConfig.access_token,
+          environment: mercadoPagoConfig.environment,
+          payment_id: manualPaymentId.trim()
+        }),
+      });
+
+      const responseData = await response.json();
+
+      if (!response.ok || !responseData.success) {
+        if (response.status === 404) {
+          alert(`❌ Pagamento ${manualPaymentId} não encontrado no Mercado Pago!\n\n${responseData.error}\n\n💡 ${responseData.suggestion || 'Verifique se o ambiente (sandbox/produção) está correto nas configurações.'}`);
+        } else {
+          throw new Error(responseData.error || `Erro HTTP: ${response.status}`);
+        }
+        return;
+      }
+
+      const paymentData = responseData.payment;
+      console.log('Payment data from MP:', paymentData);
+
+      // Try to find student by external_reference
+      let studentId = null;
+      if (paymentData.external_reference) {
+        const studentIdMatch = paymentData.external_reference.match(/student-([a-f0-9-]+)/);
+        if (studentIdMatch) {
+          studentId = studentIdMatch[1];
+        }
+      }
+
+      // If no student found in external_reference, try to find by email
+      if (!studentId && paymentData.payer?.email) {
+        const { data: studentByEmail } = await supabase
+          .from('students')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('email', paymentData.payer.email)
+          .single();
+        
+        if (studentByEmail) {
+          studentId = studentByEmail.id;
+        }
+      }
+
+      if (!studentId) {
+        alert(`❌ Não foi possível identificar o formando para este pagamento.\n\nEmail do pagador: ${paymentData.payer?.email || 'N/A'}\nReferência externa: ${paymentData.external_reference || 'N/A'}\n\nVerifique se o formando está cadastrado no sistema.`);
+        return;
+      }
+
+      // Check if payment already exists
+      const { data: existingPayment } = await supabase
+        .from('payment_transactions')
+        .select('id')
+        .eq('mercadopago_payment_id', manualPaymentId.trim())
+        .single();
+
+      if (existingPayment) {
+        alert('Este pagamento já está registrado no sistema!');
+        return;
+      }
+
+      // Create payment transaction
+      const { data: newTransaction, error: insertError } = await supabase
+        .from('payment_transactions')
+        .insert([{
+          user_id: user.id,
+          student_id: studentId,
+          mercadopago_payment_id: manualPaymentId.trim(),
+          external_reference: paymentData.external_reference || `manual-import-${Date.now()}`,
+          amount: paymentData.transaction_amount || 0,
+          status: paymentData.status || 'pending',
+          payment_method: paymentData.payment_method_id || 'unknown',
+          payment_date: paymentData.date_approved ? new Date(paymentData.date_approved).toISOString() : null,
+          payer_email: paymentData.payer?.email || '',
+          webhook_data: paymentData,
+          metadata: {
+            currency: paymentData.currency_id,
+            installments: paymentData.installments,
+            payment_type: paymentData.payment_type_id,
+            imported_manually: true,
+            import_date: new Date().toISOString()
+          }
+        }])
+        .select()
+        .single();
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      alert(`✅ Pagamento importado com sucesso!\n\nID: ${manualPaymentId}\nStatus: ${paymentData.status}\nValor: R$ ${Number(paymentData.transaction_amount).toLocaleString('pt-BR')}\nMétodo: ${paymentData.payment_method_id}`);
+      
+      setManualPaymentId('');
+      fetchPayments(); // Refresh the list
+
+    } catch (error: any) {
+      alert(`Erro ao importar pagamento: ${error.message}`);
+    } finally {
+      setImportingPayment(false);
     }
   };
 
@@ -369,28 +506,65 @@ Obrigado pela confiança! 📷✨`;
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Pagamentos</h1>
           <p className="text-gray-600 dark:text-gray-300 mt-1">Gerencie todos os pagamentos recebidos via Mercado Pago</p>
         </div>
-        <button
-          onClick={refreshPayments}
-          disabled={refreshing}
-          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors mr-3"
-        >
-          <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-          {refreshing ? 'Atualizando...' : 'Atualizar'}
-        </button>
-        <button
-          onClick={syncAllPendingPayments}
-          className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors mr-3"
-        >
-          <CheckCircle className="h-4 w-4 mr-2" />
-          Sincronizar Pendentes
-        </button>
-        <button
-          onClick={() => setShowDebug(!showDebug)}
-          className="inline-flex items-center px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
-        >
-          <Bug className="h-4 w-4 mr-2" />
-          {showDebug ? 'Ocultar Debug' : 'Debug'}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={refreshPayments}
+            disabled={refreshing}
+            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Atualizando...' : 'Atualizar'}
+          </button>
+          <button
+            onClick={syncAllPendingPayments}
+            className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+          >
+            <CheckCircle className="h-4 w-4 mr-2" />
+            Sincronizar Pendentes
+          </button>
+          <button
+            onClick={() => setShowDebug(!showDebug)}
+            className="inline-flex items-center px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+          >
+            <Bug className="h-4 w-4 mr-2" />
+            {showDebug ? 'Ocultar Debug' : 'Debug'}
+          </button>
+        </div>
+      </div>
+
+      {/* Manual Payment Import */}
+      <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-6">
+        <h3 className="text-lg font-medium text-yellow-800 dark:text-yellow-300 mb-4 flex items-center">
+          <ExternalLink className="h-5 w-5 mr-2" />
+          Importar Pagamento Manual
+        </h3>
+        <p className="text-sm text-yellow-700 dark:text-yellow-300 mb-4">
+          Se um pagamento foi feito mas não aparece no sistema, digite o ID da transação do Mercado Pago para importar manualmente.
+        </p>
+        <div className="flex space-x-3">
+          <input
+            type="text"
+            value={manualPaymentId}
+            onChange={(e) => setManualPaymentId(e.target.value)}
+            placeholder="ID do pagamento (ex: 124671217416)"
+            className="flex-1 px-3 py-2 border border-yellow-300 dark:border-yellow-600 rounded-lg focus:ring-2 focus:ring-yellow-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          />
+          <button
+            onClick={importPaymentManually}
+            disabled={importingPayment || !manualPaymentId.trim()}
+            className="inline-flex items-center px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:opacity-50 transition-colors"
+          >
+            {importingPayment ? (
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+            ) : (
+              <ExternalLink className="h-4 w-4 mr-2" />
+            )}
+            {importingPayment ? 'Importando...' : 'Importar do MP'}
+          </button>
+        </div>
+        <div className="mt-3 text-xs text-yellow-600 dark:text-yellow-400">
+          <strong>Exemplo:</strong> Para o pagamento 124671217416, digite apenas o número sem espaços ou caracteres especiais.
+        </div>
       </div>
 
       {/* Summary Cards */}
