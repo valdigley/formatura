@@ -124,6 +124,7 @@ Deno.serve(async (req: Request) => {
     // Method 1: Search by external_reference
     if (paymentDetails.external_reference) {
       console.log('🔍 Buscando transação por external_reference:', paymentDetails.external_reference);
+    }
     // Method 1: Search by mercadopago_payment_id (if already exists)
     console.log('🔍 Buscando transação por mercadopago_payment_id:', paymentId);
     const { data: transactionById } = await supabase
