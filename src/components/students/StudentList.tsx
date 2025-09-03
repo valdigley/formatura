@@ -349,6 +349,12 @@ Equipe Fotográfica`;
       }
 
       const paymentLink = responseData.payment_link;
+      const preferenceId = responseData.preference?.id;
+      
+      console.log('Preference criada:', {
+        preference_id: preferenceId,
+        payment_link: paymentLink
+      });
       
       // Save payment transaction to database immediately
       const { data: newTransaction, error: transactionError } = await supabase
@@ -356,8 +362,7 @@ Equipe Fotográfica`;
         .insert([{
           user_id: user.id,
           student_id: student.id,
-          mercadopago_payment_id: responseData.preference?.id || null,
-          preference_id: responseData.preference?.id,
+          preference_id: preferenceId,
           external_reference: `student-${student.id}-${Date.now()}`,
           amount: packagePrice,
           status: 'pending',
