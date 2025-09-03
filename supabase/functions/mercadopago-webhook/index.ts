@@ -90,13 +90,17 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Log all webhooks for debugging
-    await supabase
+    const { error: logError } = await supabase
       .from('webhook_logs')
       .insert([{
         event_type: body.action || body.type || 'unknown',
         payload: body,
         status: 'success'
       }]);
+    
+    if (logError) {
+      console.error('Error logging webhook:', logError);
+    }
 
     // Handle different webhook types
     if (body.type === 'payment' || body.action === 'payment.updated' || body.action === 'payment.created') {
@@ -104,8 +108,6 @@ Deno.serve(async (req: Request) => {
       const action = body.action || body.type;
 
       console.log('Processing payment webhook:', { paymentId, action });
-      console.log('Payment status from webhook:', body.data?.status || body.status);
-      console.log('External reference:', body.data?.external_reference || body.external_reference);
 
       if (!paymentId) {
         console.log('No payment ID found in webhook');
@@ -118,46 +120,61 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      // Try to get payment details from MercadoPago API if we have access token
-      let paymentDetails = body.data || body;
+      // Get payment details from MercadoPago API
+      console.log('Fetching payment details from MercadoPago API...');
       
-      // If we don't have full payment details, try to fetch from MP API
-      if (!paymentDetails.transaction_amount && !paymentDetails.amount) {
-        console.log('Incomplete payment data, trying to fetch from MP API...');
-        
-        // Try to find existing transaction to get access token
-        const { data: existingTransaction } = await supabase
-          .from('payment_transactions')
-          .select('*, students(user_id)')
-          .or(`mercadopago_payment_id.eq.${paymentId},external_reference.eq.${body.data?.external_reference || ''}`)
+      // First, try to find any existing transaction to get access token
+      const { data: anyTransaction } = await supabase
+        .from('payment_transactions')
+        .select('*, students(user_id)')
+        .limit(1)
+        .single();
+      
+      let paymentDetails = null;
+      
+      if (anyTransaction?.students?.user_id) {
+        const { data: settings } = await supabase
+          .from('user_settings')
+          .select('settings')
+          .eq('user_id', anyTransaction.students.user_id)
           .single();
 
-        if (existingTransaction?.students?.user_id) {
-          const { data: settings } = await supabase
-            .from('user_settings')
-            .select('settings')
-            .eq('user_id', existingTransaction.students.user_id)
-            .single();
+        const mercadoPagoConfig = settings?.settings?.mercadopago;
+        if (mercadoPagoConfig?.access_token) {
+          try {
+            console.log(`Fetching payment ${paymentId} from MP API...`);
+            const mpResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+              headers: {
+                'Authorization': `Bearer ${mercadoPagoConfig.access_token}`,
+                'Content-Type': 'application/json',
+              },
+            });
 
-          const mercadoPagoConfig = settings?.settings?.mercadopago;
-          if (mercadoPagoConfig?.access_token) {
-            try {
-              const mpResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-                headers: {
-                  'Authorization': `Bearer ${mercadoPagoConfig.access_token}`,
-                  'Content-Type': 'application/json',
-                },
-              });
-
-              if (mpResponse.ok) {
-                paymentDetails = await mpResponse.json();
-                console.log('Fetched payment details from MP API:', paymentDetails.status);
-              }
-            } catch (error) {
-              console.error('Error fetching from MP API:', error);
+            if (mpResponse.ok) {
+              paymentDetails = await mpResponse.json();
+              console.log('✅ Payment details fetched from MP API');
+              console.log('Payment status:', paymentDetails.status);
+              console.log('External reference:', paymentDetails.external_reference);
+              console.log('Amount:', paymentDetails.transaction_amount);
+            } else {
+              console.error('❌ Failed to fetch from MP API:', mpResponse.status);
+              const errorData = await mpResponse.json();
+              console.error('MP API Error:', errorData);
             }
+          } catch (error) {
+            console.error('❌ Error fetching from MP API:', error);
           }
+        } else {
+          console.log('⚠️ No MercadoPago access token found');
         }
+      } else {
+        console.log('⚠️ No existing transactions found to get access token');
+      }
+      
+      // If we couldn't fetch from API, use webhook data
+      if (!paymentDetails) {
+        console.log('Using webhook data as fallback');
+        paymentDetails = body.data || body;
       }
 
       // Find or create payment transaction
@@ -242,6 +259,8 @@ Deno.serve(async (req: Request) => {
                   installments: paymentDetails.installments,
                   payment_type: paymentDetails.payment_type_id,
                   transaction_details: paymentDetails.transaction_details
+                  webhook_received_at: new Date().toISOString(),
+                  webhook_action: action
                 }
               }])
               .select('*, students(user_id, full_name, phone, email)')
@@ -270,14 +289,16 @@ Deno.serve(async (req: Request) => {
           payment_date: paymentDetails.date_approved ? new Date(paymentDetails.date_approved).toISOString() : paymentTransaction.payment_date,
           amount: paymentDetails.transaction_amount || paymentDetails.amount || paymentTransaction.amount,
           payer_email: paymentDetails.payer?.email || paymentTransaction.payer_email,
-          webhook_data: body,
+          webhook_data: paymentDetails,
           metadata: {
             ...paymentTransaction.metadata,
             currency: paymentDetails.currency_id,
             installments: paymentDetails.installments,
             payment_type: paymentDetails.payment_type_id,
             transaction_details: paymentDetails.transaction_details,
-            last_webhook_update: new Date().toISOString()
+            last_webhook_update: new Date().toISOString(),
+            webhook_action: action,
+            fee_details: paymentDetails.fee_details
           },
           updated_at: new Date().toISOString()
         };
@@ -337,81 +358,32 @@ Deno.serve(async (req: Request) => {
           }
         }
       } else {
-        console.log('❌ Payment transaction not found, attempting to create from webhook data');
+        console.log('❌ Payment transaction not found and could not be created');
+        console.log('This might be a test webhook or payment without proper external_reference');
         
-        // Last attempt: try to create transaction from webhook data alone
-        if (paymentDetails.external_reference) {
-          const studentIdMatch = paymentDetails.external_reference.match(/student-([a-f0-9-]+)/);
-          
-          if (studentIdMatch) {
-            const studentId = studentIdMatch[1];
-            
-            const { data: student } = await supabase
-              .from('students')
-              .select('id, full_name, email, phone, user_id')
-              .eq('id', studentId)
-              .single();
-
-            if (student) {
-              console.log('Creating payment transaction from webhook data for student:', student.full_name);
-              
-              const { data: newTransaction, error: insertError } = await supabase
-                .from('payment_transactions')
-                .insert([{
-                  user_id: student.user_id,
-                  user_id: student.user_id,
-                  student_id: studentId,
-                  mercadopago_payment_id: paymentId.toString(),
-                  external_reference: paymentDetails.external_reference,
-                  amount: paymentDetails.transaction_amount || paymentDetails.amount || 0,
-                  status: paymentDetails.status || 'pending',
-                  payment_method: paymentDetails.payment_method_id || paymentDetails.payment_method || 'unknown',
-                  payment_date: paymentDetails.date_approved ? new Date(paymentDetails.date_approved).toISOString() : null,
-                  payer_email: paymentDetails.payer?.email || student.email,
-                  webhook_data: body,
-                  metadata: {
-                    currency: paymentDetails.currency_id,
-                    installments: paymentDetails.installments,
-                    payment_type: paymentDetails.payment_type_id,
-                    transaction_details: paymentDetails.transaction_details,
-                    created_from_webhook: true
-                  }
-                }]);
-
-              if (insertError) {
-                console.error('Error creating payment transaction from webhook:', insertError);
-              } else {
-                console.log('✅ Successfully created payment transaction from webhook data');
-                
-                // Send confirmation if approved
-                if (paymentDetails.status === 'approved') {
-                  const { data: settings } = await supabase
-                    .from('user_settings')
-                    .select('settings')
-                    .eq('user_id', student.user_id)
-                    .single();
-
-                  const whatsappConfig = settings?.settings?.whatsapp;
-                  if (whatsappConfig?.is_connected) {
-                    await sendPaymentConfirmation(
-                      student,
-                      {
-                        amount: paymentDetails.transaction_amount || paymentDetails.amount,
-                        payment_method: paymentDetails.payment_method_id || paymentDetails.payment_method,
-                        mercadopago_payment_id: paymentId
-                      },
-                      whatsappConfig
-                    );
-                  }
-                }
-              }
-            }
-          }
-        }
+        // Log the webhook for manual processing later
+        await supabase
+          .from('webhook_logs')
+          .insert([{
+            event_type: `unprocessed_${action}`,
+            payload: { ...body, payment_details: paymentDetails },
+            response: { error: 'Payment transaction not found', payment_id: paymentId },
+            status: 'failed'
+          }]);
       }
 
     } else {
       console.log('Non-payment webhook received:', body.type || body.action);
+      
+      // Log non-payment webhooks too
+      await supabase
+        .from('webhook_logs')
+        .insert([{
+          event_type: `other_${body.type || body.action}`,
+          payload: body,
+          response: { message: 'Non-payment webhook logged' },
+          status: 'success'
+        }]);
     }
 
     return new Response(
@@ -431,11 +403,12 @@ Deno.serve(async (req: Request) => {
       const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
       const supabase = createClient(supabaseUrl, supabaseServiceKey);
       
+      const bodyText = await req.text();
       await supabase
         .from('webhook_logs')
         .insert([{
           event_type: 'webhook_error',
-          payload: { error: error.message, original_body: await req.text() },
+          payload: { error: error.message, original_body: bodyText },
           response: { error: error.message },
           status: 'failed'
         }]);
