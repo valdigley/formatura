@@ -120,6 +120,7 @@ Deno.serve(async (req: Request) => {
 
     // Find existing transaction in database
     let transaction = null;
+    let searchMethod = '';
     
     // Method 1: Search by external_reference
     if (paymentDetails.external_reference) {
@@ -423,4 +424,5 @@ Obrigado pela confiança! Mal podemos esperar para capturar seus melhores moment
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
+  }
 });
