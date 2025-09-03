@@ -23,21 +23,13 @@ export const PaymentsList: React.FC = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // First, get student IDs for the current user
-      const { data: studentIds } = await supabase
-        .from('students')
-        .select('id')
-        .eq('user_id', user.id);
-
-      const studentIdArray = studentIds?.map(s => s.id) || [];
-
       let query = supabase
         .from('payment_transactions')
         .select(`
           *,
           students(full_name, email, phone)
         `)
-        .or(`user_id.eq.${user.id},student_id.in.(${studentIdArray.join(',')})`)
+        .or(`user_id.eq.${user.id},student_id.in.(select id from students where user_id.eq.${user.id})`)
         .order('created_at', { ascending: false });
       
       if (statusFilter !== 'all') {

@@ -454,12 +454,6 @@ Equipe Fotográfica 📷✨`;
       }
 
       const paymentLink = responseData.payment_link;
-      const preferenceId = responseData.preference?.id;
-      
-      console.log('Preference criada no cadastro público:', {
-        preference_id: preferenceId,
-        payment_link: paymentLink
-      });
       
       // Save payment transaction to database immediately
       const { data: newTransaction, error: transactionError } = await supabase
@@ -467,7 +461,7 @@ Equipe Fotográfica 📷✨`;
         .insert([{
           user_id: photographerUserId,
           student_id: studentData.id,
-          preference_id: preferenceId,
+          preference_id: responseData.preference?.id,
           external_reference: `student-${studentData.id || Date.now()}-registration`,
           amount: paymentData.final_price || packageData?.price || 500,
           status: 'pending',

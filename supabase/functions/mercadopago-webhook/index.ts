@@ -1,323 +1,31 @@
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, x-signature, x-request-id",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
-Deno.serve(async (req: Request) => {
+// Function to send WhatsApp confirmation message
+async function sendPaymentConfirmation(studentData: any, paymentData: any, whatsappConfig: any) {
   try {
-    // Handle CORS preflight
-    if (req.method === "OPTIONS") {
-      return new Response(null, {
-        status: 200,
-        headers: corsHeaders,
-      });
-    }
+    const cleanPhone = studentData.phone.replace(/\D/g, '');
+    const formattedPhone = cleanPhone.length === 11 ? `55${cleanPhone}` : cleanPhone;
 
-    // Parse webhook payload
-    const webhookData = await req.json();
-    console.log('🔔 Webhook recebido:', JSON.stringify(webhookData, null, 2));
+    const confirmationMessage = `🎉 *PAGAMENTO CONFIRMADO!* 🎉
 
-    // Initialize Supabase client
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    );
-
-    // Log webhook for debugging
-    await supabase.from('webhook_logs').insert({
-      event_type: 'mercadopago_webhook',
-      payload: webhookData,
-      status: 'received',
-    });
-
-    // Validate webhook structure according to MP docs
-    if (!webhookData.data?.id) {
-      console.error('❌ Webhook inválido: data.id não encontrado');
-      return new Response(JSON.stringify({ error: 'Invalid webhook: missing data.id' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Extract payment ID
-    const paymentId = webhookData.data.id.toString();
-    console.log('💳 Processando payment ID:', paymentId);
-
-    // Only process payment events
-    if (webhookData.type !== 'payment') {
-      console.log('ℹ️ Evento ignorado, não é do tipo payment:', webhookData.type);
-      return new Response(JSON.stringify({ message: 'Event ignored, not a payment' }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Get all MercadoPago configurations to find the right access token
-    const { data: userSettings } = await supabase
-      .from('user_settings')
-      .select('user_id, settings')
-      .not('settings->mercadopago->access_token', 'is', null);
-
-    if (!userSettings || userSettings.length === 0) {
-      console.error('❌ Nenhuma configuração do MercadoPago encontrada');
-      return new Response(JSON.stringify({ error: 'No MercadoPago configurations found' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    let paymentDetails = null;
-    let matchedUserId = null;
-
-    // Try each access token until we find the payment
-    for (const userSetting of userSettings) {
-      const mpConfig = userSetting.settings?.mercadopago;
-      if (!mpConfig?.access_token) continue;
-
-      console.log(`🔍 Tentando buscar pagamento com access token do usuário: ${userSetting.user_id}`);
-      
-      try {
-        const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${mpConfig.access_token}`,
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (response.ok) {
-          paymentDetails = await response.json();
-          matchedUserId = userSetting.user_id;
-          console.log('✅ Pagamento encontrado:', {
-            id: paymentDetails.id,
-            status: paymentDetails.status,
-            external_reference: paymentDetails.external_reference,
-            amount: paymentDetails.transaction_amount,
-            payer_email: paymentDetails.payer?.email
-          });
-          break;
-        } else {
-          console.log(`❌ Pagamento não encontrado com este access token (${response.status})`);
-        }
-      } catch (error) {
-        console.error(`❌ Erro ao buscar pagamento:`, error);
-      }
-    }
-
-    if (!paymentDetails) {
-      console.error('❌ Pagamento não encontrado em nenhuma conta configurada');
-      return new Response(JSON.stringify({ 
-        error: 'Payment not found in any configured account',
-        payment_id: paymentId 
-      }), {
-        status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Find existing transaction in database
-    let transaction = null;
-    let searchMethod = '';
-    
-    // Method 1: Search by external_reference
-    if (paymentDetails.external_reference) {
-      console.log('🔍 Buscando transação por external_reference:', paymentDetails.external_reference);
-    }
-    // Method 1: Search by mercadopago_payment_id (if already exists)
-    console.log('🔍 Buscando transação por mercadopago_payment_id:', paymentId);
-    const { data: transactionById } = await supabase
-      .from('payment_transactions')
-      .select('*, students(full_name, email, phone)')
-      .eq('mercadopago_payment_id', paymentId)
-      .single();
-    
-    if (transactionById) {
-      transaction = transactionById;
-      searchMethod = 'mercadopago_payment_id';
-      console.log('✅ Transação encontrada por mercadopago_payment_id');
-    } else {
-      // Method 2: Search by external_reference
-      if (paymentDetails.external_reference) {
-        console.log('🔍 Buscando transação por external_reference:', paymentDetails.external_reference);
-        
-        const { data: transactionByRef } = await supabase
-          .from('payment_transactions')
-          .select('*, students(full_name, email, phone)')
-          .eq('external_reference', paymentDetails.external_reference)
-          .single();
-        
-        if (transactionByRef) {
-          transaction = transactionByRef;
-          searchMethod = 'external_reference';
-          console.log('✅ Transação encontrada por external_reference');
-        }
-      }
-
-      // Method 3: Search by payer email and amount (for older transactions)
-      if (!transaction && paymentDetails.payer?.email) {
-        console.log('🔍 Buscando transação por email e valor:', paymentDetails.payer.email, paymentDetails.transaction_amount);
-        
-        const { data: transactionByEmail } = await supabase
-          .from('payment_transactions')
-          .select('*, students(full_name, email, phone)')
-          .eq('payer_email', paymentDetails.payer.email)
-          .eq('amount', paymentDetails.transaction_amount.toString())
-          .eq('status', 'pending')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
-        
-        if (transactionByEmail) {
-          transaction = transactionByEmail;
-          searchMethod = 'email_amount';
-          console.log('✅ Transação encontrada por email e valor');
-        }
-      }
-    }
-
-    if (!transaction) {
-      console.error('❌ Transação não encontrada no banco de dados');
-      console.log('🔍 Dados disponíveis para busca:', {
-        external_reference: paymentDetails.external_reference,
-        payer_email: paymentDetails.payer?.email,
-        amount: paymentDetails.transaction_amount,
-        preference_id: paymentDetails.additional_info?.external_reference
-      });
-      
-      // Create new transaction if payment is approved and we have enough data
-      if (paymentDetails.status === 'approved' && paymentDetails.payer?.email) {
-        console.log('💡 Criando nova transação para pagamento aprovado');
-        
-        const { data: newTransaction, error: createError } = await supabase
-          .from('payment_transactions')
-          .insert([{
-            user_id: matchedUserId,
-            mercadopago_payment_id: paymentId,
-            external_reference: paymentDetails.external_reference || `payment-${paymentId}`,
-            amount: paymentDetails.transaction_amount,
-            status: paymentDetails.status,
-            payment_method: paymentDetails.payment_method_id || paymentDetails.payment_type_id,
-            payment_date: paymentDetails.date_approved,
-            payer_email: paymentDetails.payer.email,
-            webhook_data: paymentDetails,
-            metadata: {
-              created_by_webhook: true,
-              payment_id: paymentId
-            }
-          }])
-          .select('*, students(full_name, email, phone)')
-          .single();
-
-        if (createError) {
-          console.error('❌ Erro ao criar nova transação:', createError);
-          return new Response(JSON.stringify({ error: 'Failed to create transaction', details: createError }), {
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
-        }
-        
-        transaction = newTransaction;
-        console.log('✅ Nova transação criada:', transaction.id);
-      } else {
-        return new Response(JSON.stringify({ 
-          error: 'Transaction not found and cannot create new one',
-          payment_id: paymentId,
-          status: paymentDetails.status,
-          payer_email: paymentDetails.payer?.email
-        }), {
-          status: 404,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-    }
-
-    // Update transaction with payment details
-    const updateData = {
-      mercadopago_payment_id: paymentId,
-      status: paymentDetails.status,
-      payment_method: paymentDetails.payment_method_id || paymentDetails.payment_type_id,
-      webhook_data: paymentDetails,
-    };
-
-    // Add payment date if approved
-    if (paymentDetails.status === 'approved' && paymentDetails.date_approved) {
-      updateData.payment_date = paymentDetails.date_approved;
-    }
-
-    console.log('📝 Atualizando transação:', transaction.id, 'com status:', paymentDetails.status);
-
-    const { error: updateError } = await supabase
-      .from('payment_transactions')
-      .update(updateData)
-      .eq('id', transaction.id);
-
-    if (updateError) {
-      console.error('❌ Erro ao atualizar transação:', updateError);
-      return new Response(JSON.stringify({ error: 'Update failed', details: updateError }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    console.log('✅ Transação atualizada com sucesso');
-
-    // Send WhatsApp confirmation if payment is approved
-    if (paymentDetails.status === 'approved' && transaction.students) {
-      console.log('📱 Enviando confirmação via WhatsApp para:', transaction.students.full_name);
-      
-      try {
-        // Get WhatsApp config for the user
-        const { data: userSetting } = await supabase
-          .from('user_settings')
-          .select('settings')
-          .eq('user_id', matchedUserId)
-          .single();
-
-        const whatsappConfig = userSetting?.settings?.whatsapp;
-        
-        if (whatsappConfig?.is_connected && whatsappConfig?.api_url) {
-          // Normalize phone number
-          const normalizePhone = (phone: string) => {
-            let clean = phone.replace(/\D/g, '');
-            if (clean.startsWith('55')) {
-              clean = clean.substring(2);
-            }
-            
-            const variations = [];
-            if (clean.length === 10) {
-              const with9 = clean.substring(0, 2) + '9' + clean.substring(2);
-              variations.push(`55${with9}`);
-              variations.push(`55${clean}`);
-            } else if (clean.length === 11) {
-              variations.push(`55${clean}`);
-              if (clean.charAt(2) === '9') {
-                const without9 = clean.substring(0, 2) + clean.substring(3);
-                variations.push(`55${without9}`);
-              }
-            }
-            
-            return [...new Set(variations)];
-          };
-          
-          const phoneVariations = normalizePhone(transaction.students.phone);
-          
-          const confirmationMessage = `🎉 *PAGAMENTO CONFIRMADO!* 🎉
-
-Olá ${transaction.students.full_name}!
+Olá ${studentData.full_name}!
 
 ✅ Confirmamos o recebimento do seu pagamento!
 
 📋 *DETALHES:*
-• Valor: R$ ${Number(paymentDetails.transaction_amount).toLocaleString('pt-BR')}
-• Método: ${paymentDetails.payment_method_id === 'pix' ? 'PIX' :
-           paymentDetails.payment_method_id === 'credit_card' ? 'Cartão de Crédito' :
-           paymentDetails.payment_method_id === 'debit_card' ? 'Cartão de Débito' :
-           paymentDetails.payment_method_id || 'Cartão'}
+• Valor: R$ ${Number(paymentData.amount).toLocaleString('pt-BR')}
+• Método: ${paymentData.payment_method === 'pix' ? 'PIX' : 
+           paymentData.payment_method === 'credit_card' ? 'Cartão de Crédito' :
+           paymentData.payment_method === 'debit_card' ? 'Cartão de Débito' :
+           paymentData.payment_method}
 • Data: ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}
-• ID da Transação: ${paymentId}
+• ID da Transação: ${paymentData.mercadopago_payment_id}
 
 📸 *SUA SESSÃO FOTOGRÁFICA ESTÁ CONFIRMADA!*
 
@@ -326,103 +34,421 @@ Olá ${transaction.students.full_name}!
 • Prepare-se para o grande dia da formatura
 • Em caso de dúvidas, estamos à disposição
 
-Obrigado pela confiança! Mal podemos esperar para capturar seus melhores momentos! 📷✨`;
+Obrigado pela confiança! Mal podemos esperar para capturar seus momentos especiais! 📷✨
 
-          // Try to send to each phone variation
-          let messageSent = false;
-          for (const phoneNumber of phoneVariations) {
-            try {
-              console.log(`📱 Tentando enviar confirmação para: ${phoneNumber}`);
-              
-              const response = await fetch(`${whatsappConfig.api_url}/message/sendText/${whatsappConfig.instance_name}`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'apikey': whatsappConfig.api_key,
-                },
-                body: JSON.stringify({
-                  number: `${phoneNumber}@s.whatsapp.net`,
-                  text: confirmationMessage,
-                }),
-              });
+Atenciosamente,
+Equipe Fotográfica`;
 
-              if (response.ok) {
-                console.log(`✅ Confirmação enviada via WhatsApp para: ${phoneNumber}`);
-                messageSent = true;
-                break;
-              } else {
-                console.log(`❌ Falha ao enviar para ${phoneNumber}`);
-              }
-            } catch (error) {
-              console.error(`❌ Erro ao enviar WhatsApp para ${phoneNumber}:`, error);
-            }
+    const response = await fetch(`${whatsappConfig.api_url}/message/sendText/${whatsappConfig.instance_name}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': whatsappConfig.api_key,
+      },
+      body: JSON.stringify({
+        number: `${formattedPhone}@s.whatsapp.net`,
+        text: confirmationMessage,
+      }),
+    });
+
+    return response.ok;
+  } catch (error) {
+    console.error('Error sending payment confirmation:', error);
+    return false;
+  }
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, {
+      status: 200,
+      headers: corsHeaders,
+    });
+  }
+
+  try {
+    console.log('=== WEBHOOK MERCADO PAGO RECEBIDO ===');
+    console.log('Method:', req.method);
+    console.log('URL:', req.url);
+
+    if (req.method !== 'POST') {
+      return new Response(
+        JSON.stringify({ error: 'Método não permitido' }),
+        {
+          status: 405,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    const body = await req.json();
+    console.log('Webhook payload:', JSON.stringify(body, null, 2));
+
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Log all webhooks for debugging
+    const { error: logError } = await supabase
+      .from('webhook_logs')
+      .insert([{
+        event_type: body.action || body.type || 'unknown',
+        payload: body,
+        status: 'success'
+      }]);
+    
+    if (logError) {
+      console.error('Error logging webhook:', logError);
+    }
+
+    // Handle different webhook types
+    if (body.type === 'payment' || body.action === 'payment.updated' || body.action === 'payment.created') {
+      const paymentId = body.data?.id || body.id;
+      const action = body.action || body.type;
+
+      console.log('Processing payment webhook:', { paymentId, action });
+
+      if (!paymentId) {
+        console.log('No payment ID found in webhook');
+        return new Response(
+          JSON.stringify({ success: true, message: 'No payment ID to process' }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           }
-          
-          if (!messageSent) {
-            console.log('⚠️ Não foi possível enviar confirmação via WhatsApp');
+        );
+      }
+
+      // Get payment details from MercadoPago API
+      console.log('Fetching payment details from MercadoPago API...');
+      
+      // First, try to find any existing transaction to get access token
+      const { data: anyTransaction } = await supabase
+        .from('payment_transactions')
+        .select('*, students(user_id)')
+        .limit(1)
+        .single();
+      
+      let paymentDetails = null;
+      
+      if (anyTransaction?.students?.user_id) {
+        const { data: settings } = await supabase
+          .from('user_settings')
+          .select('settings')
+          .eq('user_id', anyTransaction.students.user_id)
+          .single();
+
+        const mercadoPagoConfig = settings?.settings?.mercadopago;
+        if (mercadoPagoConfig?.access_token) {
+          try {
+            console.log(`Fetching payment ${paymentId} from MP API...`);
+            const mpResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+              headers: {
+                'Authorization': `Bearer ${mercadoPagoConfig.access_token}`,
+                'Content-Type': 'application/json',
+              },
+            });
+
+            if (mpResponse.ok) {
+              paymentDetails = await mpResponse.json();
+              console.log('✅ Payment details fetched from MP API');
+              console.log('Payment status:', paymentDetails.status);
+              console.log('External reference:', paymentDetails.external_reference);
+              console.log('Amount:', paymentDetails.transaction_amount);
+            } else {
+              console.error('❌ Failed to fetch from MP API:', mpResponse.status);
+              const errorData = await mpResponse.json();
+              console.error('MP API Error:', errorData);
+            }
+          } catch (error) {
+            console.error('❌ Error fetching from MP API:', error);
           }
         } else {
-          console.log('⚠️ WhatsApp não configurado, pulando notificação');
+          console.log('⚠️ No MercadoPago access token found');
         }
-      } catch (whatsappError) {
-        console.error('❌ Erro no envio do WhatsApp:', whatsappError);
+      } else {
+        console.log('⚠️ No existing transactions found to get access token');
       }
+      
+      // If we couldn't fetch from API, use webhook data
+      if (!paymentDetails) {
+        console.log('Using webhook data as fallback');
+        paymentDetails = body.data || body;
+      }
+
+      // Find or create payment transaction
+      let paymentTransaction = null;
+      
+      // First try to find by mercadopago_payment_id
+      const { data: existingByMpId } = await supabase
+        .from('payment_transactions')
+        .select('*, students(user_id, full_name, phone, email)')
+        .eq('mercadopago_payment_id', paymentId.toString())
+        .single();
+
+      if (existingByMpId) {
+        paymentTransaction = existingByMpId;
+        console.log('Found existing payment by MP ID:', paymentTransaction.id);
+      }
+
+      // If not found by MP ID, try by external_reference
+      if (!paymentTransaction && (paymentDetails.external_reference || body.data?.external_reference)) {
+        const externalRef = paymentDetails.external_reference || body.data?.external_reference;
+        console.log('Looking for payment by external_reference:', externalRef);
+        
+        const { data: existingByRef } = await supabase
+          .from('payment_transactions')
+          .select('*, students(user_id, full_name, phone, email)')
+          .eq('external_reference', externalRef)
+          .single();
+
+        if (existingByRef) {
+          paymentTransaction = existingByRef;
+          console.log('Found existing payment by external_reference:', paymentTransaction.id);
+          
+          // Update with MP payment ID if missing
+          if (!paymentTransaction.mercadopago_payment_id) {
+            console.log('Updating transaction with MP payment ID:', paymentId);
+            await supabase
+              .from('payment_transactions')
+              .update({ mercadopago_payment_id: paymentId.toString() })
+              .eq('id', paymentTransaction.id);
+            
+            // Refresh the transaction data
+            const { data: updatedTransaction } = await supabase
+              .from('payment_transactions')
+              .select('*, students(user_id, full_name, phone, email)')
+              .eq('id', paymentTransaction.id)
+              .single();
+            
+            if (updatedTransaction) {
+              paymentTransaction = updatedTransaction;
+            }
+          }
+        }
+      }
+
+      // If still not found, try to create from external_reference
+      if (!paymentTransaction && (paymentDetails.external_reference || body.data?.external_reference)) {
+        const externalRef = paymentDetails.external_reference || body.data?.external_reference;
+        console.log('Attempting to create payment transaction from external_reference:', externalRef);
+        
+        const studentIdMatch = externalRef.match(/student-([a-f0-9-]+)/);
+        
+        if (studentIdMatch) {
+          const studentId = studentIdMatch[1];
+          console.log('Extracted student ID:', studentId);
+          
+          // Get student data
+          const { data: student, error: studentError } = await supabase
+            .from('students')
+            .select('id, full_name, email, phone, user_id')
+            .eq('id', studentId)
+            .single();
+
+          if (studentError) {
+            console.log('Student not found:', studentError);
+          } else if (student) {
+            console.log('Found student:', student.full_name);
+            
+            // Create new payment transaction
+            const { data: newTransaction, error: insertError } = await supabase
+              .from('payment_transactions')
+              .insert([{
+                user_id: student.user_id,
+                student_id: studentId,
+                mercadopago_payment_id: paymentId.toString(),
+                external_reference: externalRef,
+                amount: paymentDetails.transaction_amount || paymentDetails.amount || 0,
+                status: paymentDetails.status || 'pending',
+                payment_method: paymentDetails.payment_method_id || paymentDetails.payment_method || 'unknown',
+                payment_date: paymentDetails.date_approved ? new Date(paymentDetails.date_approved).toISOString() : null,
+                payer_email: paymentDetails.payer?.email || student.email,
+                webhook_data: body,
+                metadata: {
+                  currency: paymentDetails.currency_id,
+                  installments: paymentDetails.installments,
+                  payment_type: paymentDetails.payment_type_id,
+                  transaction_details: paymentDetails.transaction_details,
+                  webhook_received_at: new Date().toISOString(),
+                  webhook_action: action
+                }
+              }])
+              .select('*, students(user_id, full_name, phone, email)')
+              .single();
+
+            if (insertError) {
+              console.error('Error creating payment transaction:', insertError);
+            } else {
+              paymentTransaction = newTransaction;
+              console.log('Created new payment transaction:', paymentTransaction?.id);
+            }
+          }
+        }
+      }
+
+      // Update existing payment transaction
+      if (paymentTransaction) {
+        console.log('Updating payment transaction:', paymentTransaction.id);
+        console.log('Current status:', paymentTransaction.status);
+        console.log('New status from MP:', paymentDetails.status);
+        
+        const wasNotApproved = paymentTransaction.status !== 'approved';
+        const isNowApproved = paymentDetails.status === 'approved';
+        
+        const updateData = {
+          status: paymentDetails.status || paymentTransaction.status,
+          payment_method: paymentDetails.payment_method_id || paymentDetails.payment_method || paymentTransaction.payment_method,
+          amount: paymentDetails.transaction_amount || paymentDetails.amount || paymentTransaction.amount,
+          payer_email: paymentDetails.payer?.email || paymentTransaction.payer_email,
+          webhook_data: paymentDetails,
+          metadata: {
+            ...paymentTransaction.metadata,
+            currency: paymentDetails.currency_id,
+            installments: paymentDetails.installments,
+            payment_type: paymentDetails.payment_type_id,
+            transaction_details: paymentDetails.transaction_details,
+            date_approved: paymentDetails.date_approved,
+            date_created: paymentDetails.date_created,
+            last_webhook_update: new Date().toISOString(),
+            webhook_action: action,
+            fee_details: paymentDetails.fee_details
+          },
+          updated_at: new Date().toISOString()
+        };
+
+        const { error: updateError } = await supabase
+          .from('payment_transactions')
+          .update(updateData)
+          .eq('id', paymentTransaction.id);
+
+        if (updateError) {
+          console.error('Error updating payment transaction:', updateError);
+        } else {
+          console.log('✅ Successfully updated payment transaction');
+          console.log('Updated status to:', paymentDetails.status);
+
+          // Send confirmation message if payment was just approved
+          if (wasNotApproved && isNowApproved && paymentTransaction.students) {
+            console.log('🎉 Payment was just approved, sending confirmation message');
+            
+            try {
+              // Get WhatsApp configuration for the photographer
+              const { data: settings, error: settingsError } = await supabase
+                .from('user_settings')
+                .select('settings')
+                .eq('user_id', paymentTransaction.students.user_id)
+                .single();
+
+              if (settingsError) {
+                console.error('Error fetching WhatsApp settings:', settingsError);
+              } else {
+                const whatsappConfig = settings?.settings?.whatsapp;
+                
+                if (whatsappConfig?.is_connected) {
+                  console.log('📱 WhatsApp is connected, sending confirmation');
+                  
+                  const confirmationSent = await sendPaymentConfirmation(
+                    paymentTransaction.students,
+                    {
+                      amount: paymentDetails.transaction_amount || paymentDetails.amount || paymentTransaction.amount,
+                      payment_method: paymentDetails.payment_method_id || paymentDetails.payment_method || paymentTransaction.payment_method,
+                      mercadopago_payment_id: paymentId
+                    },
+                    whatsappConfig
+                  );
+                  
+                  if (confirmationSent) {
+                    console.log('✅ Payment confirmation sent via WhatsApp successfully');
+                  } else {
+                    console.error('❌ Failed to send payment confirmation via WhatsApp');
+                  }
+                } else {
+                  console.log('⚠️ WhatsApp not configured or not connected');
+                }
+              }
+            } catch (confirmationError) {
+              console.error('Error in confirmation process:', confirmationError);
+            }
+          }
+        }
+      } else {
+        console.log('❌ Payment transaction not found for payment ID:', paymentId);
+        console.log('External reference from MP:', paymentDetails.external_reference);
+        console.log('This might be a test webhook or payment without proper external_reference');
+        
+        // Log the webhook for manual processing later
+        await supabase
+          .from('webhook_logs')
+          .insert([{
+            event_type: `unprocessed_payment_${action}`,
+            payload: { ...body, payment_details: paymentDetails },
+            response: { 
+              error: 'Payment transaction not found', 
+              payment_id: paymentId,
+              external_reference: paymentDetails.external_reference,
+              amount: paymentDetails.transaction_amount,
+              status: paymentDetails.status,
+              payer_email: paymentDetails.payer?.email
+            },
+            status: 'failed'
+          }]);
+      }
+
+    } else {
+      console.log('Non-payment webhook received:', body.type || body.action);
+      
+      // Log non-payment webhooks too
+      await supabase
+        .from('webhook_logs')
+        .insert([{
+          event_type: `other_${body.type || body.action}`,
+          payload: body,
+          response: { message: 'Non-payment webhook logged' },
+          status: 'success'
+        }]);
     }
 
-    // Log successful processing
-    await supabase.from('webhook_logs').insert({
-      event_type: 'mercadopago_webhook',
-      payload: webhookData,
-      response: {
-        transaction_id: transaction.id,
-        payment_id: paymentId,
-        status: paymentDetails.status,
-        updated: true
-      },
-      status: 'success',
-    });
-
-    console.log('🎉 Webhook processado com sucesso!');
-
-    return new Response(JSON.stringify({ 
-      success: true, 
-      payment_id: paymentId,
-      transaction_id: transaction.id,
-      status: paymentDetails.status,
-      message: 'Payment processed successfully'
-    }), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return new Response(
+      JSON.stringify({ success: true, message: 'Webhook processado com sucesso' }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    );
 
   } catch (error) {
-    console.error('❌ Erro no webhook:', error);
+    console.error('❌ Webhook error:', error);
     
-    // Log error
+    // Log failed webhook
     try {
-      const supabase = createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-      );
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
       
-      const requestBody = await req.text();
-      
-      await supabase.from('webhook_logs').insert({
-        event_type: 'mercadopago_webhook',
-        payload: { error: 'Failed to parse', raw: requestBody },
-        response: { error: error.message },
-        status: 'failed',
-      });
+      const bodyText = await req.text();
+      await supabase
+        .from('webhook_logs')
+        .insert([{
+          event_type: 'webhook_error',
+          payload: { error: error.message, original_body: bodyText },
+          response: { error: error.message },
+          status: 'failed'
+        }]);
     } catch (logError) {
-      console.error('❌ Falha ao registrar erro:', logError);
+      console.error('Error logging webhook failure:', logError);
     }
-
-    return new Response(JSON.stringify({ 
-      error: 'Internal server error', 
-      details: error.message 
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    
+    return new Response(
+      JSON.stringify({
+        error: 'Erro interno do servidor',
+        details: error.message
+      }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    );
   }
 });
