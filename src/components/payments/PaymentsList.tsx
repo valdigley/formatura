@@ -128,7 +128,12 @@ export const PaymentsList: React.FC = () => {
       const responseData = await response.json();
 
       if (!response.ok || !responseData.success) {
-        throw new Error(responseData.error || `Erro HTTP: ${response.status}`);
+        if (response.status === 404) {
+          alert(`❌ Pagamento não encontrado no Mercado Pago!\n\n${responseData.error}\n\n💡 ${responseData.suggestion || 'Verifique se o ambiente (sandbox/produção) está correto nas configurações.'}`);
+        } else {
+          throw new Error(responseData.error || `Erro HTTP: ${response.status}`);
+        }
+        return;
       }
 
       const mpPaymentData = responseData.payment;

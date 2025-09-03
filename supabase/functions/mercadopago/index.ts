@@ -252,6 +252,8 @@ Deno.serve(async (req: Request) => {
               );
             }
 
+            console.log(`Tentando buscar pagamento ${payment_id} no ambiente ${environment}`);
+
             const response = await fetch(`${baseUrl}/v1/payments/${payment_id}`, {
               method: 'GET',
               headers: {
@@ -262,6 +264,7 @@ Deno.serve(async (req: Request) => {
 
             if (response.ok) {
               const paymentData = await response.json();
+              console.log(`Pagamento encontrado: Status ${paymentData.status}`);
               
               return new Response(
                 JSON.stringify({
@@ -275,6 +278,30 @@ Deno.serve(async (req: Request) => {
               );
             } else {
               const errorData = await response.json();
+              console.error(`Erro MP API: ${response.status}`, errorData);
+              
+              if (response.status === 404) {
+                return new Response(
+                  JSON.stringify({
+                    success: false,
+                    error: `Pagamento ${payment_id} não encontrado no Mercado Pago. Possíveis causas:
+• Payment ID incorreto
+• Pagamento foi feito em ambiente diferente (${environment === 'sandbox' ? 'produção' : 'sandbox'})
+• Pagamento foi cancelado ou expirou
+• Credenciais são de outro vendedor`,
+                    payment_id: payment_id,
+                    environment: environment,
+                    suggestion: environment === 'sandbox' 
+                      ? 'Verifique se o pagamento foi feito no ambiente de testes (sandbox)'
+                      : 'Verifique se o pagamento foi feito no ambiente de produção'
+                  }),
+                  {
+                    status: 404,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                  }
+                );
+              }
+              
               return new Response(
                 JSON.stringify({
                   success: false,
