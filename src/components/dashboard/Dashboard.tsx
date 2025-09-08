@@ -60,7 +60,6 @@ export const Dashboard: React.FC = () => {
         classesResult,
         sessionsResult,
         packagesResult,
-        paymentsResult,
         transactionsResult
       ] = await Promise.all([
         supabase
@@ -80,20 +79,16 @@ export const Dashboard: React.FC = () => {
           .select('id, is_active, price, created_at, name')
           .eq('user_id', user.id),
         supabase
-          .from('session_payments')
-          .select('id, amount, status, created_at, payment_date')
-          .eq('user_id', user.id),
-        supabase
           .from('payment_transactions')
-          .select('id, amount, status, created_at, payment_date')
-          .eq('user_id', user.id)
+          .select('id, amount, status, created_at, payment_date, student_id')
+          .not('student_id', 'is', null)
+          .eq('status', 'approved')
       ]);
 
       const students = studentsResult.data || [];
       const classes = classesResult.data || [];
       const sessions = sessionsResult.data || [];
       const packages = packagesResult.data || [];
-      const payments = paymentsResult.data || [];
       const transactions = transactionsResult.data || [];
 
       // Calculate real statistics
@@ -110,18 +105,17 @@ export const Dashboard: React.FC = () => {
       const completedSessions = sessions.filter(s => s.status === 'completed').length;
       const activePackages = packages.filter(p => p.is_active).length;
       
-      // Calculate revenue from both session_payments and payment_transactions
-      const sessionPaymentsRevenue = payments
-        .filter(p => p.status === 'paid')
-        .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      // Calculate revenue only from approved student payments
+      const totalRevenue = transactions.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
       
-      const transactionsRevenue = transactions
-        .filter(t => t.status === 'approved')
-        .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+      // Get pending payments count from all student transactions
+      const { data: pendingTransactions } = await supabase
+        .from('payment_transactions')
+        .select('id')
+        .not('student_id', 'is', null)
+        .eq('status', 'pending');
       
-      const totalRevenue = sessionPaymentsRevenue + transactionsRevenue;
-      
-      const pendingPayments = payments.filter(p => p.status === 'pending').length;
+      const pendingPayments = pendingTransactions?.length || 0;
 
       setStats({
         totalStudents,
@@ -155,15 +149,7 @@ export const Dashboard: React.FC = () => {
       });
 
       // Count revenue by month
-      [...payments, ...transactions].forEach(payment => {
-        if (payment.payment_date && payment.status === 'paid') {
-          const paymentDate = new Date(payment.payment_date);
-          const monthKey = format(paymentDate, 'MMM', { locale: ptBR });
-          if (monthlyStats[monthKey]) {
-            monthlyStats[monthKey].revenue += Number(payment.amount) || 0;
-          }
-        }
-        // Also check for approved transactions
+      transactions.forEach(payment => {
         if (payment.payment_date && payment.status === 'approved') {
           const paymentDate = new Date(payment.payment_date);
           const monthKey = format(paymentDate, 'MMM', { locale: ptBR });
@@ -182,11 +168,17 @@ export const Dashboard: React.FC = () => {
       setMonthlyData(chartData);
 
       // Generate payment status data for pie chart
-      const allPayments = [...payments, ...transactions];
+      // Get all student payment transactions for pie chart
+      const { data: allStudentTransactions } = await supabase
+        .from('payment_transactions')
+        .select('amount, status')
+        .not('student_id', 'is', null);
+      
+      const allPayments = allStudentTransactions || [];
       const paymentStatusData = [
         {
           name: 'Pagos',
-          value: allPayments.filter(p => p.status === 'paid' || p.status === 'approved').reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
+          value: allPayments.filter(p => p.status === 'approved').reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
           color: '#10B981'
         },
         {
@@ -196,7 +188,7 @@ export const Dashboard: React.FC = () => {
         },
         {
           name: 'Atrasados',
-          value: allPayments.filter(p => p.status === 'overdue' || p.status === 'rejected').reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
+          value: allPayments.filter(p => p.status === 'rejected' || p.status === 'cancelled').reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
           color: '#EF4444'
         }
       ].filter(item => item.value > 0);
