@@ -51,8 +51,12 @@ export const PaymentDetails: React.FC<PaymentDetailsProps> = ({ payment, onClose
         metadata: {
           ...payment.metadata,
           discount: discount,
+          discount_type: discount < 0 ? 'discount' : discount > 0 ? 'fee' : 'none',
+          discount_reason: discount < 0 ? 'Desconto concedido ao aluno' : discount > 0 ? 'Taxa de cartão/serviço' : 'Sem ajuste',
           original_amount: originalAmount,
-          discount_amount: originalAmount - finalAmount,
+          adjustment_amount: finalAmount - originalAmount,
+          discount_amount: discount < 0 ? originalAmount - finalAmount : 0,
+          fee_amount: discount > 0 ? finalAmount - originalAmount : 0,
           manual_update: true,
           updated_by: 'manual',
           updated_at: new Date().toISOString(),
