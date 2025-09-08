@@ -506,63 +506,7 @@ export const Dashboard: React.FC = () => {
                         </div>
                       </div>
                     )}
-                    {activity.type === 'student' && (
-                      <div className="flex flex-col space-y-1 mt-1">
-                        {/* Contract Status */}
-                {payment.metadata.discount && payment.metadata.discount !== 0 && (
-                          {activity.contractStatus === 'sent_success' ? (
-                    <span className="text-gray-600 dark:text-gray-300">
-                      {payment.metadata.discount > 0 ? 'Taxa:' : 'Desconto:'}
-                    </span>
-                    <span className={`font-medium ${
-                      payment.metadata.discount > 0 
-                        ? 'text-orange-600 dark:text-orange-400' 
-                        : 'text-green-600 dark:text-green-400'
-                    }`}>
-                      {Math.abs(payment.metadata.discount)}%
-                    </span>
-                              <span className="text-xs text-green-600 dark:text-green-400">Contrato enviado</span>
-                            </>
-                          ) : activity.contractStatus === 'sent_failed' ? (
-                            <>
-                              <AlertCircle className="h-3 w-3 text-red-500" />
-                              <span className="text-xs text-red-600 dark:text-red-400">Falha no contrato</span>
-                            </>
-                          ) : activity.contractStatus === 'not_sent' ? (
-                            <>
-                              <Clock className="h-3 w-3 text-yellow-500" />
-                              <span className="text-xs text-yellow-600 dark:text-yellow-400">Contrato não enviado</span>
-                            </>
-                          ) : null}
-                        </div>
-                        
-                        {/* Payment Status */}
-                        <div className="flex items-center space-x-1">
-                          {activity.paymentStatus === 'sent_success' ? (
-                            <>
-                              <CheckCircle className="h-3 w-3 text-green-500" />
-                              <span className="text-xs text-green-600 dark:text-green-400">Pagamento enviado</span>
-                            </>
-                          ) : activity.paymentStatus === 'sent_failed' ? (
-                            <>
-                              <AlertCircle className="h-3 w-3 text-red-500" />
-                              <span className="text-xs text-red-600 dark:text-red-400">Falha no pagamento</span>
-                            </>
-                          ) : activity.paymentStatus === 'not_sent' ? (
-                            <>
-                              <Clock className="h-3 w-3 text-yellow-500" />
-                              <span className="text-xs text-yellow-600 dark:text-yellow-400">Pagamento não enviado</span>
-                            </>
-                          ) : null}
-                        </div>
-                      </div>
-                    )}
                   </div>
-                  {activity.type === 'student' && (activity.contractStatus === 'sent_failed' || activity.paymentStatus === 'sent_failed') && (
-                    <div className="absolute top-2 right-2">
-                      <div className="h-2 w-2 bg-red-500 rounded-full animate-pulse"></div>
-                    </div>
-                  )}
                   {activity.type === 'student' && (activity.contractStatus === 'sent_failed' || activity.paymentStatus === 'sent_failed') && (
                     <div className="absolute top-2 right-2">
                       <div className="h-2 w-2 bg-red-500 rounded-full animate-pulse"></div>
