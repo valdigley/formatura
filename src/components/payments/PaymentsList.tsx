@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Database } from '../../types/database';
-import { DollarSign, Search, Filter, Eye, CheckCircle, Clock, AlertCircle, CreditCard, Calendar, User, Package, RefreshCw } from 'lucide-react';
+import { DollarSign, Search, Filter, Eye, CheckCircle, Clock, AlertCircle, CreditCard, Calendar, User, Package, RefreshCw, Check, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -13,6 +13,7 @@ export const PaymentsList: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [refreshing, setRefreshing] = useState(false);
+  const [confirmingPayment, setConfirmingPayment] = useState<string | null>(null);
 
   useEffect(() => {
     fetchPayments();
@@ -66,6 +67,67 @@ export const PaymentsList: React.FC = () => {
     setRefreshing(true);
     await fetchPayments();
     setRefreshing(false);
+  };
+
+  const confirmPaymentManually = async (paymentId: string) => {
+    if (!confirm('Tem certeza que deseja confirmar este pagamento manualmente?')) return;
+    
+    setConfirmingPayment(paymentId);
+    try {
+      const { error } = await supabase
+        .from('payment_transactions')
+        .update({
+          status: 'approved',
+          payment_date: new Date().toISOString(),
+          metadata: {
+            ...payments.find(p => p.id === paymentId)?.metadata,
+            manual_confirmation: true,
+            confirmed_by: 'manual',
+            confirmed_at: new Date().toISOString()
+          },
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', paymentId);
+
+      if (error) throw error;
+      
+      alert('Pagamento confirmado manualmente com sucesso!');
+      fetchPayments();
+    } catch (error: any) {
+      alert(`Erro ao confirmar pagamento: ${error.message}`);
+    } finally {
+      setConfirmingPayment(null);
+    }
+  };
+
+  const rejectPaymentManually = async (paymentId: string) => {
+    if (!confirm('Tem certeza que deseja rejeitar este pagamento?')) return;
+    
+    setConfirmingPayment(paymentId);
+    try {
+      const { error } = await supabase
+        .from('payment_transactions')
+        .update({
+          status: 'rejected',
+          metadata: {
+            ...payments.find(p => p.id === paymentId)?.metadata,
+            manual_rejection: true,
+            rejected_by: 'manual',
+            rejected_at: new Date().toISOString()
+          },
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', paymentId);
+
+      if (error) throw error;
+      
+      alert('Pagamento rejeitado com sucesso!');
+      fetchPayments();
+    } catch (error: any) {
+      alert(`Erro ao rejeitar pagamento: ${error.message}`);
+    } finally {
+      setConfirmingPayment(null);
+    }
   };
 
   const filteredPayments = payments.filter(payment => {
@@ -202,12 +264,49 @@ export const PaymentsList: React.FC = () => {
                       {getStatusIcon(payment.status)}
                       <span className="ml-1">{getStatusLabel(payment.status)}</span>
                     </span>
+                    {payment.metadata?.manual_confirmation && (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+                        Manual
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-gray-600 dark:text-gray-300">
                     {payment.students?.full_name || payment.payer_email}
                   </p>
                 </div>
               </div>
+              
+              {/* Manual Actions */}
+              {(payment.status === 'pending' || payment.status === 'in_process') && (
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => confirmPaymentManually(payment.id)}
+                    disabled={confirmingPayment === payment.id}
+                    className="inline-flex items-center px-3 py-1 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+                    title="Confirmar pagamento manualmente"
+                  >
+                    {confirmingPayment === payment.id ? (
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
+                    ) : (
+                      <Check className="h-3 w-3 mr-1" />
+                    )}
+                    Confirmar
+                  </button>
+                  <button
+                    onClick={() => rejectPaymentManually(payment.id)}
+                    disabled={confirmingPayment === payment.id}
+                    className="inline-flex items-center px-3 py-1 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+                    title="Rejeitar pagamento"
+                  >
+                    {confirmingPayment === payment.id ? (
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
+                    ) : (
+                      <X className="h-3 w-3 mr-1" />
+                    )}
+                    Rejeitar
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -240,6 +339,16 @@ export const PaymentsList: React.FC = () => {
                 {payment.preference_id && (
                   <p className="text-xs text-gray-600 dark:text-gray-300">
                     <strong>Preference ID:</strong> {payment.preference_id}
+                  </p>
+                )}
+                {payment.metadata?.manual_confirmation && (
+                  <p className="text-xs text-blue-600 dark:text-blue-400">
+                    <strong>Confirmação Manual:</strong> {new Date(payment.metadata.confirmed_at).toLocaleString('pt-BR')}
+                  </p>
+                )}
+                {payment.metadata?.manual_rejection && (
+                  <p className="text-xs text-red-600 dark:text-red-400">
+                    <strong>Rejeitado Manualmente:</strong> {new Date(payment.metadata.rejected_at).toLocaleString('pt-BR')}
                   </p>
                 )}
               </div>
