@@ -26,6 +26,8 @@ interface RecentActivity {
   description: string;
   date: string;
   status: string;
+  contractStatus?: string;
+  paymentStatus?: string;
 }
 
 export const Dashboard: React.FC = () => {
@@ -63,7 +65,7 @@ export const Dashboard: React.FC = () => {
       ] = await Promise.all([
         supabase
           .from('students')
-          .select('id, status, created_at, full_name')
+          .select('id, status, created_at, full_name, notes')
           .eq('user_id', user.id),
         supabase
           .from('graduation_classes')
