@@ -24,10 +24,20 @@ export const PaymentDetails: React.FC<PaymentDetailsProps> = ({ payment, onClose
   const [paymentDate, setPaymentDate] = useState(
     payment.payment_date ? new Date(payment.payment_date).toISOString().slice(0, 16) : ''
   );
+  const [discount, setDiscount] = useState(payment.metadata?.discount || 0);
+  const [originalAmount, setOriginalAmount] = useState(payment.metadata?.original_amount || payment.amount);
+  const [finalAmount, setFinalAmount] = useState(payment.amount);
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState('');
+
+  // Calculate final amount when discount changes
+  React.useEffect(() => {
+    const discountAmount = (originalAmount * discount) / 100;
+    const newFinalAmount = originalAmount - discountAmount;
+    setFinalAmount(newFinalAmount);
+  }, [discount, originalAmount]);
 
   const handleSave = async () => {
     setLoading(true);
@@ -36,9 +46,13 @@ export const PaymentDetails: React.FC<PaymentDetailsProps> = ({ payment, onClose
     try {
       const updateData: any = {
         status,
+        amount: finalAmount,
         updated_at: new Date().toISOString(),
         metadata: {
           ...payment.metadata,
+          discount: discount,
+          original_amount: originalAmount,
+          discount_amount: originalAmount - finalAmount,
           manual_update: true,
           updated_by: 'manual',
           updated_at: new Date().toISOString(),
@@ -210,9 +224,16 @@ export const PaymentDetails: React.FC<PaymentDetailsProps> = ({ payment, onClose
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="text-center p-4 bg-white dark:bg-gray-700 rounded-lg">
                 <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                  R$ {Number(payment.amount).toLocaleString('pt-BR')}
+                  R$ {Number(finalAmount).toLocaleString('pt-BR')}
                 </div>
-                <div className="text-sm text-gray-600 dark:text-gray-300">Valor Total</div>
+                <div className="text-sm text-gray-600 dark:text-gray-300">
+                  Valor Final
+                  {discount > 0 && (
+                    <div className="text-xs text-green-600 dark:text-green-400">
+                      Original: R$ {Number(originalAmount).toLocaleString('pt-BR')} (-{discount}%)
+                    </div>
+                  )}
+                </div>
               </div>
               
               <div className="text-center p-4 bg-white dark:bg-gray-700 rounded-lg">
@@ -308,6 +329,71 @@ export const PaymentDetails: React.FC<PaymentDetailsProps> = ({ payment, onClose
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 />
               </div>
+            </div>
+
+            {/* Discount Section */}
+            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+              <h4 className="font-medium text-yellow-800 dark:text-yellow-300 mb-3 flex items-center">
+                <DollarSign className="h-4 w-4 mr-2" />
+                Aplicar Desconto
+              </h4>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Valor Original (R$)
+                  </label>
+                  <input
+                    type="number"
+                    value={originalAmount}
+                    onChange={(e) => setOriginalAmount(parseFloat(e.target.value) || 0)}
+                    min="0"
+                    step="0.01"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Desconto (%)
+                  </label>
+                  <input
+                    type="number"
+                    value={discount}
+                    onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    placeholder="0"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Valor Final (R$)
+                  </label>
+                  <div className="px-3 py-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                    <div className="font-bold text-green-800 dark:text-green-300">
+                      R$ {finalAmount.toLocaleString('pt-BR')}
+                    </div>
+                    {discount > 0 && (
+                      <div className="text-xs text-green-600 dark:text-green-400">
+                        Economia: R$ {(originalAmount - finalAmount).toLocaleString('pt-BR')}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              {discount > 0 && (
+                <div className="mt-3 p-3 bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-700 rounded-lg">
+                  <p className="text-sm text-green-800 dark:text-green-300">
+                    <strong>Desconto aplicado:</strong> {discount}% sobre R$ {originalAmount.toLocaleString('pt-BR')} = 
+                    <strong> R$ {(originalAmount - finalAmount).toLocaleString('pt-BR')} de desconto</strong>
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="mt-4">
