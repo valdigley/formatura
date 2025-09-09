@@ -7,6 +7,9 @@ interface DashboardStats {
   totalStudents: number;
   totalClasses: number;
   pendingPayments: number;
+  pendingAmount: number;
+  overdueAmount: number;
+  approvedCount: number;
 }
 
 export function Dashboard() {
@@ -15,6 +18,9 @@ export function Dashboard() {
     totalStudents: 0,
     totalClasses: 0,
     pendingPayments: 0,
+    pendingAmount: 0,
+    overdueAmount: 0,
+    approvedCount: 0,
   });
   const [loading, setLoading] = useState(true);
 
@@ -27,15 +33,29 @@ export function Dashboard() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Buscar receita total dos pagamentos dos formandos
-      const { data: payments } = await supabase
+      // Buscar todos os pagamentos dos formandos
+      const { data: allPayments } = await supabase
         .from('payment_transactions')
-        .select('amount')
+        .select('amount, status')
         .eq('user_id', user.id)
-        .not('student_id', 'is', null)
-        .eq('status', 'approved');
+        .not('student_id', 'is', null);
 
-      const totalRevenue = payments?.reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
+      // Calcular receita total (apenas pagamentos aprovados)
+      const approvedPayments = allPayments?.filter(p => p.status === 'approved') || [];
+      const totalRevenue = approvedPayments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+
+      // Calcular pagamentos pendentes (valor total)
+      const pendingPayments = allPayments?.filter(p => p.status === 'pending') || [];
+      const pendingAmount = pendingPayments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+
+      // Calcular pagamentos em atraso (mais de 7 dias)
+      const overduePayments = allPayments?.filter(p => {
+        if (p.status !== 'pending') return false;
+        const createdDate = new Date(p.created_at);
+        const daysDiff = (Date.now() - createdDate.getTime()) / (1000 * 60 * 60 * 24);
+        return daysDiff > 7;
+      }) || [];
+      const overdueAmount = overduePayments.reduce((sum, payment) => sum + Number(payment.amount), 0);
 
       // Buscar total de estudantes
       const { count: totalStudents } = await supabase
@@ -49,19 +69,14 @@ export function Dashboard() {
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user.id);
 
-      // Buscar pagamentos pendentes
-      const { count: pendingPayments } = await supabase
-        .from('payment_transactions')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .not('student_id', 'is', null)
-        .eq('status', 'pending');
-
       setStats({
         totalRevenue,
         totalStudents: totalStudents || 0,
         totalClasses: totalClasses || 0,
-        pendingPayments: pendingPayments || 0,
+        pendingPayments: pendingPayments.length,
+        pendingAmount,
+        overdueAmount,
+        approvedCount: approvedPayments.length,
       });
     } catch (error) {
       console.error('Erro ao buscar estatísticas:', error);
@@ -141,16 +156,30 @@ export function Dashboard() {
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Resumo Financeiro</h2>
         <div className="space-y-4">
           <div className="flex justify-between items-center">
-            <span className="text-gray-600 dark:text-gray-400">Receita dos Formandos</span>
+            <span className="text-gray-600 dark:text-gray-400">Receita Confirmada ({stats.approvedCount} pagamentos)</span>
             <span className="font-semibold text-gray-900 dark:text-white">
               R$ {stats.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </span>
           </div>
           <div className="flex justify-between items-center">
-            <span className="text-gray-600 dark:text-gray-400">Pagamentos Pendentes</span>
-            <span className="font-semibold text-orange-600 dark:text-orange-400">
-              {stats.pendingPayments} transações
+            <span className="text-gray-600 dark:text-gray-400">Pagamentos Pendentes ({stats.pendingPayments} transações)</span>
+            <span className="font-semibold text-yellow-600 dark:text-yellow-400">
+              R$ {stats.pendingAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-gray-600 dark:text-gray-400">Pagamentos em Atraso (+ de 7 dias)</span>
+            <span className="font-semibold text-red-600 dark:text-red-400">
+              R$ {stats.overdueAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </span>
+          </div>
+          <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex justify-between items-center">
+              <span className="text-gray-700 dark:text-gray-300 font-medium">Total em Aberto</span>
+              <span className="font-bold text-gray-900 dark:text-white">
+                R$ {(stats.pendingAmount + stats.overdueAmount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </span>
+            </div>
           </div>
         </div>
       </div>
