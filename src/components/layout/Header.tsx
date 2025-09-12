@@ -31,9 +31,14 @@ export const Header: React.FC<HeaderProps> = ({ currentPage, onPageChange }) => 
               <div className="h-8 w-8 bg-blue-600 dark:bg-blue-500 rounded-lg flex items-center justify-center">
                 <Users className="h-5 w-5 text-white" />
               </div>
-              <h1 className="ml-3 text-xl font-bold text-gray-900 dark:text-white">
-                Formaturas By Valdigley Santos
-              </h1>
+              <div className="ml-3">
+                <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+                  Formaturas
+                </h1>
+                <p className="text-xs text-gray-600 dark:text-gray-400 -mt-1">
+                  By Valdigley Santos
+                </p>
+              </div>
             </div>
 
             <nav className="hidden md:flex space-x-4">
