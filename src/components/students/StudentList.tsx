@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Database } from '../../types/database';
-import { Plus, Search, Filter, Edit, Trash2, Phone, Mail, User, Link, Copy, Check, UserPlus, MessageSquare, DollarSign, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import { Plus, Search, Filter, Edit, Trash2, Phone, Mail, User, Link, Copy, Check, UserPlus, MessageSquare, DollarSign, CheckCircle, AlertCircle, Clock, FileText } from 'lucide-react';
 import { StudentForm } from './StudentForm';
 
 type Student = Database['public']['Tables']['students']['Row'];
@@ -23,6 +23,7 @@ export const StudentList: React.FC = () => {
   const [whatsappConfig, setWhatsappConfig] = useState<any>(null);
   const [sendingWhatsApp, setSendingWhatsApp] = useState<string | null>(null);
   const [sendingPayment, setSendingPayment] = useState<string | null>(null);
+  const [sendingContract, setSendingContract] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -252,6 +253,216 @@ Equipe Fotográfica`;
       alert(`Erro ao enviar WhatsApp: ${error.message}`);
     } finally {
       setSendingWhatsApp(null);
+    }
+  };
+
+  const sendContract = async (student: Student) => {
+    if (!whatsappConfig?.is_connected) {
+      alert('Configure e conecte o WhatsApp primeiro nas Configurações');
+      return;
+    }
+
+    setSendingContract(student.id);
+    try {
+      // Get contract template and generate contract
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Usuário não autenticado');
+
+      const { data: settings } = await supabase
+        .from('user_settings')
+        .select('settings')
+        .eq('user_id', user.id)
+        .single();
+
+      let template = settings?.settings?.contract_template || `CONTRATO DE PRESTAÇÃO DE SERVIÇOS FOTOGRÁFICOS
+
+CONTRATANTE: {{client_name}}
+CPF: {{client_cpf}}
+TELEFONE: {{client_phone}}
+EMAIL: {{client_email}}
+
+CONTRATADA: {{studio_name}}
+
+OBJETO: Prestação de serviços fotográficos para formatura da turma {{class_name}}.
+
+VALOR: R$ {{package_price}}
+FORMA DE PAGAMENTO: {{payment_method}}
+ENTREGA: 15 dias úteis
+
+Data: {{contract_date}}
+
+_________________________    _________________________
+    Contratante                  Contratada`;
+
+      // Get studio name and graduation class info
+      const studioName = settings?.settings?.general?.studio_name || 'Estúdio Fotográfico';
+      const graduationClass = graduationClasses.find(c => c.id === student.graduation_class_id);
+      
+      // Extract package info from student notes if available
+      let packagePrice = 'A definir';
+      let packageName = 'Pacote Fotográfico';
+      let paymentMethod = 'A definir';
+      
+      if (student.notes) {
+        const priceMatch = student.notes.match(/Preço:\s*R\$\s*([\d.,]+)/);
+        const packageMatch = student.notes.match(/Pacote:\s*([^\n]+)/);
+        const paymentMatch = student.notes.match(/Forma de Pagamento:\s*([^\n]+)/);
+        
+        if (priceMatch) {
+          packagePrice = priceMatch[1];
+        }
+        if (packageMatch) {
+          packageName = packageMatch[1].trim();
+        }
+        if (paymentMatch) {
+          paymentMethod = paymentMatch[1].trim();
+        }
+      }
+      
+      // Replace template variables
+      const contract = template
+        .replace(/\{\{client_name\}\}/g, student.full_name)
+        .replace(/\{\{client_cpf\}\}/g, student.cpf || 'Não informado')
+        .replace(/\{\{client_phone\}\}/g, student.phone)
+        .replace(/\{\{client_email\}\}/g, student.email)
+        .replace(/\{\{studio_name\}\}/g, studioName)
+        .replace(/\{\{class_name\}\}/g, graduationClass?.name || 'Turma de Formatura')
+        .replace(/\{\{package_name\}\}/g, packageName)
+        .replace(/\{\{package_price\}\}/g, packagePrice)
+        .replace(/\{\{payment_method\}\}/g, paymentMethod)
+        .replace(/\{\{contract_date\}\}/g, new Date().toLocaleDateString('pt-BR'));
+      
+      // Função para normalizar e tentar diferentes formatos de telefone
+      const normalizePhone = (phone: string) => {
+        let clean = phone.replace(/\D/g, '');
+        
+        if (clean.startsWith('55')) {
+          clean = clean.substring(2);
+        }
+        
+        const variations = [];
+        
+        if (clean.length === 10) {
+          const with9 = clean.substring(0, 2) + '9' + clean.substring(2);
+          variations.push(`55${with9}`);
+          variations.push(`55${clean}`);
+          variations.push(with9);
+          variations.push(clean);
+        } else if (clean.length === 11) {
+          variations.push(`55${clean}`);
+          variations.push(clean);
+          if (clean.charAt(2) === '9') {
+            const without9 = clean.substring(0, 2) + clean.substring(3);
+            variations.push(`55${without9}`);
+            variations.push(without9);
+          }
+        } else {
+          variations.push(clean);
+          variations.push(`55${clean}`);
+        }
+        
+        return [...new Set(variations)];
+      };
+      
+      const phoneVariations = normalizePhone(student.phone);
+      console.log('Tentando reenviar contrato para números:', phoneVariations);
+
+      const message = `📋 *REENVIO DE CONTRATO* 📋
+
+Olá ${student.full_name}! 📸
+
+Conforme solicitado, segue novamente o contrato para sua sessão fotográfica de formatura:
+
+📄 *CONTRATO DE PRESTAÇÃO DE SERVIÇOS FOTOGRÁFICOS:*
+
+${contract}
+
+---
+
+✅ *PARA CONFIRMAR:* Responda *"ACEITO"* 
+
+📞 *DÚVIDAS?* Entre em contato conosco!
+
+Atenciosamente,
+Equipe Fotográfica 📷✨`;
+
+      // Tenta enviar para cada variação do número até conseguir
+      let messageSent = false;
+      let lastError = '';
+      let successPhone = '';
+      
+      for (const phoneNumber of phoneVariations) {
+        try {
+          console.log(`Tentando reenviar contrato para: ${phoneNumber}`);
+          
+          const response = await fetch(`${whatsappConfig.api_url}/message/sendText/${whatsappConfig.instance_name}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': whatsappConfig.api_key,
+            },
+            body: JSON.stringify({
+              number: `${phoneNumber}@s.whatsapp.net`,
+              text: message,
+            }),
+          });
+
+          const responseData = await response.json();
+          console.log(`Resposta para ${phoneNumber}:`, responseData);
+
+          if (response.ok && responseData.key) {
+            console.log(`✅ Contrato reenviado com sucesso para: ${phoneNumber}`);
+            messageSent = true;
+            successPhone = phoneNumber;
+            
+            // Update student notes with success
+            const successDetails = `REENVIADO COM SUCESSO\nTelefone: ${phoneNumber}\nRemote JID: ${responseData.key.remoteJid || 'N/A'}\nID da mensagem: ${responseData.key.id || 'N/A'}`;
+            
+            await supabase
+              .from('students')
+              .update({
+                notes: (student.notes || '') + `\n\n=== REENVIO DE CONTRATO ===\nData: ${new Date().toLocaleString('pt-BR')}\nStatus: ${successDetails}`,
+                contract_sent_status: 'sent',
+                contract_sent_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', student.id);
+            
+            break;
+          } else {
+            lastError = responseData.message || `Erro HTTP: ${response.status}`;
+            console.log(`❌ Falha ao reenviar contrato para ${phoneNumber}:`, lastError);
+          }
+        } catch (error: any) {
+          lastError = error.message;
+          console.error(`Erro ao tentar reenviar contrato para ${phoneNumber}:`, error);
+        }
+      }
+      
+      if (messageSent) {
+        alert(`Contrato reenviado com sucesso para ${successPhone}!`);
+        fetchData(); // Refresh data to show updated status
+      } else {
+        // Update student notes with failure
+        const failureDetails = `FALHA NO REENVIO\nErro: ${lastError}\nTelefones tentados: ${phoneVariations.join(', ')}`;
+        
+        await supabase
+          .from('students')
+          .update({
+            notes: (student.notes || '') + `\n\n=== REENVIO DE CONTRATO ===\nData: ${new Date().toLocaleString('pt-BR')}\nStatus: ${failureDetails}`,
+            contract_sent_status: 'failed',
+            contract_sent_error: lastError,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', student.id);
+        
+        throw new Error(`Falha ao reenviar para todos os números testados. Último erro: ${lastError}`);
+      }
+
+    } catch (error: any) {
+      alert(`Erro ao reenviar contrato: ${error.message}`);
+    } finally {
+      setSendingContract(null);
     }
   };
 
@@ -694,6 +905,18 @@ Obrigado pela confiança! 📷✨`;
               <div className="flex space-x-1">
                 {whatsappConfig?.is_connected && (
                   <>
+                    <button
+                      onClick={() => sendContract(student)}
+                      disabled={sendingContract === student.id}
+                      className="p-1 text-gray-400 hover:text-purple-600 transition-colors"
+                      title="Reenviar contrato via WhatsApp"
+                    >
+                      {sendingContract === student.id ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600"></div>
+                      ) : (
+                        <FileText className="h-4 w-4" />
+                      )}
+                    </button>
                     <button
                       onClick={() => sendPaymentRequest(student)}
                       disabled={sendingPayment === student.id}
