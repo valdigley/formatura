@@ -32,7 +32,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPage, onPageChange }) => 
                 <Users className="h-5 w-5 text-white" />
               </div>
               <h1 className="ml-3 text-xl font-bold text-gray-900 dark:text-white">
-                Foto Formatura
+                Formaturas By Valdigley Santos
               </h1>
             </div>
 

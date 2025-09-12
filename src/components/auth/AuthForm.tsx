@@ -83,7 +83,7 @@ export const AuthForm: React.FC = () => {
             {isLogin ? 'Entre na sua conta' : 'Crie sua conta'}
           </h2>
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-            Sistema de Gestão de Formaturas
+            Formaturas By Valdigley Santos
           </p>
         </div>
 
